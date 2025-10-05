@@ -6,7 +6,7 @@ import json
 # Replace with your API keys
 BITSGAP_API_KEY = 'your_bitsgap_api_key'
 BITSGAP_SECRET = 'your_bitsgap_secret'
-WHALE_ALERT_API = 'https://api.whale-alert.io/v1/transactions?api_key=pAatYEgl6epDzBoEHb6UCs4PJkElsoQX&min_value=1000000&currency=eth,sol,aioz'
+WHALE_ALERT_API = 'https://api.whale-alert.io/v1/transactions?api_key=UEyAIiXp8TcVdwkRtbGjFoHFSKlDqtgP&min_value=1000000&currency=eth,sol,aioz'
 
 class WhaleBot:
     def __init__(self):
