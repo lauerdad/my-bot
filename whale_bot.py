@@ -1,31 +1,38 @@
-import requests
+import websockets
+import asyncio
+import json
 import time
 from datetime import datetime
-import json
+import requests
 
-# Replace with your API keys
-BITSGAP_API_KEY = 'your_bitsgap_api_key'
-BITSGAP_SECRET = 'your_bitsgap_secret'
-WHALE_ALERT_API = 'https://api.whale-alert.io/v1/transactions?api_key=jUb3m6VpwtbeCpQrGXbtK68dVVNdnu7u&min_value=1000000&currency=eth,sol,aioz'
+# API keys
+BITSGAP_API_KEY = 'oWT319GDCXaycRl8qrUXr4FDRPLtCwxpH0cMQIB9ZSnesFkDu31qy9tSJaa8AHcv'
+BITSGAP_SECRET = 'ykpHpGZis85wcxxN7pMVzn0L96UFlzZN8gAKAWFIax3dHUziZHiDzjkmYgAJ1H31'
+WHALE_ALERT_WS = 'wss://api.whale-alert.io/v1/feed?api_key=nv3rUbq3b2g0QWhcDZ2kC3ZN1Q6vj2zF'
 
 class WhaleBot:
     def __init__(self):
-        self.portfolio = 348.66  # Starting 48.66
+        self.portfolio = 348.66  # Starting $348.66
         self.trades_log = 'trades.log'
-        self.whale_threshold = 1000000  # M+ buys
+        self.whale_threshold = 1000000  # $1M+ buys
         self.stop_loss_pct = 0.10  # 10%
 
-    def get_whale_buys(self):
+    async def get_whale_buys(self):
         try:
-            response = requests.get(WHALE_ALERT_API)
-            response.raise_for_status()  # Raise error for bad status codes
-            data = response.json()
-            print(f"API Response: {data}")  # Log raw response
-            if 'transactions' not in data:
-                print(f"Error: 'transactions' key not found in response: {data}")
-                return []
-            buys = [tx for tx in data['transactions'] if float(tx['amount']) > self.whale_threshold]
-            return buys
+            async with websockets.connect(WHALE_ALERT_WS) as websocket:
+                await websocket.send(json.dumps({
+                    'type': 'subscribe',
+                    'channels': [{'name': 'transactions', 'currencies': ['eth'], 'min_value': 1000000}]
+                }))
+                async for message in websocket:
+                    data = json.loads(message)
+                    print(f"WebSocket Response: {json.dumps(data, indent=2)}")  # Log formatted response
+                    if 'type' in data and data['type'] == 'transaction':
+                        tx = data
+                        if float(tx.get('amount_usd', 0)) > self.whale_threshold:
+                            print(f"Found whale buy: {tx.get('amount', 0)} {tx.get('symbol', '')} (${tx.get('amount_usd', 0)})")
+                            return [tx]
+                    return []
         except Exception as e:
             print(f"Error fetching whale data: {e}")
             return []
@@ -55,23 +62,25 @@ class WhaleBot:
             print(f"Bitsgap error: {e}")
             return False
 
-    def main(self):
+    async def main(self):
         print("Auto-Trading Bot Started - Buying Altseason Winners...")
-        allocations = {'ETH/USDT': 139.46, 'SOL/USDT': 104.60, 'AIOZ/USDT': 104.60}  # 48.66 split
+        allocations = {'ETH/USDT': 139.46, 'SOL/USDT': 104.60, 'AIOZ/USDT': 104.60}  # $348.66 split
         last_tx = {}
         while True:
             for symbol, amount in allocations.items():
                 currency = symbol.split('/')[0].lower()
-                buys = self.get_whale_buys()
+                if currency != 'eth':  # Only process ETH for now
+                    continue
+                buys = await self.get_whale_buys()
                 for tx in buys:
                     if tx['symbol'].lower() == currency and tx['hash'] not in last_tx.get(currency, []):
-                        print(f"Whale buy detected: {tx['amount']} {currency}")
+                        print(f"Whale buy detected: {tx['amount']} {currency} (${tx['amount_usd']})")
                         self.place_bitsgap_buy_order(symbol, amount * 0.3)  # 30% of allocation
                         last_tx.setdefault(currency, []).append(tx['hash'])
                         if len(last_tx[currency]) > 10:
                             last_tx[currency].pop(0)
-            time.sleep(300)  # Check every 5 minutes
+            await asyncio.sleep(300)  # Check every 5 minutes
 
 if __name__ == "__main__":
     bot = WhaleBot()
-    bot.main()
+    asyncio.run(bot.main())
