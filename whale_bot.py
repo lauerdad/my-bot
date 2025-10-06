@@ -18,7 +18,12 @@ class WhaleBot:
     def get_whale_buys(self):
         try:
             response = requests.get(WHALE_ALERT_API)
+            response.raise_for_status()  # Raise error for bad status codes
             data = response.json()
+            print(f"API Response: {data}")  # Log raw response
+            if 'transactions' not in data:
+                print(f"Error: 'transactions' key not found in response: {data}")
+                return []
             buys = [tx for tx in data['transactions'] if float(tx['amount']) > self.whale_threshold]
             return buys
         except Exception as e:
