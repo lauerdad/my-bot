@@ -6,13 +6,13 @@ from datetime import datetime
 import requests
 
 # API keys
-BITSGAP_API_KEY = 'oWT319GDCXaycRl8qrUXr4FDRPLtCwxpH0cMQIB9ZSnesFkDu31qy9tSJaa8AHcv'
-BITSGAP_SECRET = 'ykpHpGZis85wcxxN7pMVzn0L96UFlzZN8gAKAWFIax3dHUziZHiDzjkmYgAJ1H31'
-WHALE_ALERT_WS = 'wss://api.whale-alert.io/v1/feed?api_key=nv3rUbq3b2g0QWhcDZ2kC3ZN1Q6vj2zF'
+BITSGAP_API_KEY = 'RTzu0B9sRhzeIF2PqMczZBjQAcS6kjSajmeDnrpneegXO7UbK3dnDSEm4zVlyFl3'
+BITSGAP_SECRET = 'RWOzXHVNNdLeqOkonE80GjaTwp1hCvQ0S70lUYQ1pEEMXfM068nFxIBLE7ay9QZg'
+WHALE_ALERT_WS = 'wss://leviathan.whale-alert.io/ws?api_key=k3As9PmuD4DhGAKvfQwvzYXzTCEGp5Sz'
 
 class WhaleBot:
     def __init__(self):
-        self.portfolio = 348.66  # Starting $348.66
+        self.portfolio = 361.78  # Updated balance $361.78
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # $1M+ buys
         self.stop_loss_pct = 0.10  # 10%
@@ -64,7 +64,7 @@ class WhaleBot:
 
     async def main(self):
         print("Auto-Trading Bot Started - Buying Altseason Winners...")
-        allocations = {'ETH/USDT': 139.46, 'SOL/USDT': 104.60, 'AIOZ/USDT': 104.60}  # $348.66 split
+        allocations = {'ETH/USDT': 144.71, 'SOL/USDT': 108.53, 'AIOZ/USDT': 108.54}  # $361.78 split
         last_tx = {}
         while True:
             for symbol, amount in allocations.items():
