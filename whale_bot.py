@@ -1,45 +1,39 @@
-import websockets
-import asyncio
-import json
+import requests
 import time
 from datetime import datetime
-import requests
+import json
 
 # API keys
-BITSGAP_API_KEY = 'RTzu0B9sRhzeIF2PqMczZBjQAcS6kjSajmeDnrpneegXO7UbK3dnDSEm4zVlyFl3'
-BITSGAP_SECRET = 'RWOzXHVNNdLeqOkonE80GjaTwp1hCvQ0S70lUYQ1pEEMXfM068nFxIBLE7ay9QZg'
-WHALE_ALERT_WS = 'wss://leviathan.whale-alert.io/ws?api_key=k3As9PmuD4DhGAKvfQwvzYXzTCEGp5Sz'
+BITSGAP_API_KEY = 'f6CPOeYEIFEnRfj4y4ue61nFdjKBn1r8jnSD77PviV25bJPgldxBhyo4FWlxH9fR'
+BITSGAP_SECRET = 'sDnEvppRzCFW1Ce0TiChFzVf6PGHgM32GqHPPiu2m5KeoEPheAwmTwiXhjXCOGaH'
+COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/tickers?coin_ids=ethereum&include_exchange_logo=false&precision=2'
 
 class WhaleBot:
     def __init__(self):
-        self.portfolio = 361.78  # Updated balance $361.78
+        self.portfolio = 346.30  # Updated balance 46.30
         self.trades_log = 'trades.log'
-        self.whale_threshold = 1000000  # $1M+ buys
+        self.whale_threshold = 1000000  # M+ buys
         self.stop_loss_pct = 0.10  # 10%
 
-    async def get_whale_buys(self):
+    def get_whale_buys(self):
         try:
-            async with websockets.connect(WHALE_ALERT_WS) as websocket:
-                await websocket.send(json.dumps({
-                    'type': 'subscribe',
-                    'channels': [{'name': 'transactions', 'currencies': ['eth'], 'min_value': 1000000}]
-                }))
-                async for message in websocket:
-                    data = json.loads(message)
-                    print(f"WebSocket Response: {json.dumps(data, indent=2)}")  # Log formatted response
-                    if 'type' in data and data['type'] == 'transaction':
-                        tx = data
-                        if float(tx.get('amount_usd', 0)) > self.whale_threshold:
-                            print(f"Found whale buy: {tx.get('amount', 0)} {tx.get('symbol', '')} (${tx.get('amount_usd', 0)})")
-                            return [tx]
-                    return []
+            response = requests.get(COINGECKO_WHALE_URL)
+            response.raise_for_status()
+            data = response.json()
+            # Look for large trades on ETH
+            buys = []
+            for ticker in data['tickers']:
+                if ticker['base'] == 'ETH' and ticker['converted_volume']['usd'] > self.whale_threshold:
+                    print(f"Whale buy detected: {ticker['converted_volume']['usd']} USD volume on {ticker['target']}")
+                    buys.append(ticker)
+            return buys
         except Exception as e:
             print(f"Error fetching whale data: {e}")
             return []
 
     def place_bitsgap_buy_order(self, symbol, amount_usd):
         try:
-            url = 'https://api.bitsgap.com/v1/trade'
+            url = 'https://api.bitsgap.com/private/v2/trading/orders'
             headers = {'Authorization': f'Bearer {BITSGAP_API_KEY}'}
             payload = {
                 'market': symbol,  # e.g., ETH/USDT
@@ -62,25 +56,24 @@ class WhaleBot:
             print(f"Bitsgap error: {e}")
             return False
 
-    async def main(self):
+    def main(self):
         print("Auto-Trading Bot Started - Buying Altseason Winners...")
-        allocations = {'ETH/USDT': 144.71, 'SOL/USDT': 108.53, 'AIOZ/USDT': 108.54}  # $361.78 split
+        allocations = {'ETH/USDT': 138.52, 'SOL/USDT': 103.89, 'AIOZ/USDT': 103.89}  # 46.30 split
         last_tx = {}
         while True:
             for symbol, amount in allocations.items():
                 currency = symbol.split('/')[0].lower()
-                if currency != 'eth':  # Only process ETH for now
-                    continue
-                buys = await self.get_whale_buys()
+                buys = self.get_whale_buys()
                 for tx in buys:
-                    if tx['symbol'].lower() == currency and tx['hash'] not in last_tx.get(currency, []):
-                        print(f"Whale buy detected: {tx['amount']} {currency} (${tx['amount_usd']})")
+                    unique_id = f"{tx['market']['identifier']}_{tx['timestamp']}"
+                    if tx['base'].lower() == currency and unique_id not in last_tx.get(currency, []):
+                        print(f"Whale buy detected: {tx['converted_volume']['usd']} USD in {currency}")
                         self.place_bitsgap_buy_order(symbol, amount * 0.3)  # 30% of allocation
-                        last_tx.setdefault(currency, []).append(tx['hash'])
+                        last_tx.setdefault(currency, []).append(unique_id)
                         if len(last_tx[currency]) > 10:
                             last_tx[currency].pop(0)
-            await asyncio.sleep(300)  # Check every 5 minutes
+            time.sleep(300)  # Check every 5 minutes
 
 if __name__ == "__main__":
     bot = WhaleBot()
-    asyncio.run(bot.main())
+    bot.main()
