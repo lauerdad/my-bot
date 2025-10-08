@@ -20,11 +20,11 @@ class WhaleBot:
         self.whale_threshold = 1000000  # $1M+ buys
         self.stop_loss_pct = 0.05  # 5% for quick exits
         self.min_notional = 3.0   # Trade size $3 for low balance
-        self.max_market_cap = 500000000  # Max $500M market cap
+        self.max_market_cap = 1000000000  # Max $1B market cap
         self.performance_threshold = 0.05  # Hold if >5% gain in 24h
         self.sell_threshold = 0.0  # Sell if <0% (dropping)
         self.excluded_coins = ['BTC', 'ETH', 'BNB', 'USDC', 'SOL', 'DOGE', 'ADA']  # Exclude high-cap coins
-        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA', 'FOUR', 'AVANTIS']  # Expanded priority coins
+        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA', 'FOUR', 'AVANTIS', 'AVNT', 'HEMI', 'OPEN', 'MIRA', 'S', 'TUT', 'NEIRO']  # Expanded priority coins
 
     def get_server_time(self):
         try:
