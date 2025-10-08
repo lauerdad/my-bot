@@ -48,7 +48,7 @@ class WhaleBot:
                 'symbol': 'ETHUSDT',
                 'side': 'SELL',
                 'type': 'MARKET',
-                'quantity': eth_amount,
+                'quantity': f"{eth_amount:.8f}",  # Ensure correct precision
                 'timestamp': timestamp
             }
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
@@ -62,7 +62,7 @@ class WhaleBot:
                 print(f"Converted {eth_amount} ETH to {usdt_received} USDT")
                 return usdt_received
             else:
-                print(f"ETH to USDT conversion failed: {response.text}")
+                print(f"ETH to USDT conversion failed: {response.status_code} - {response.text}")
                 return 0
         except Exception as e:
             print(f"Conversion error: {e}")
@@ -89,7 +89,7 @@ class WhaleBot:
             # Check balance and convert ETH to USDT if needed
             usdt_balance, eth_balance = self.get_account_balance()
             if usdt_balance < amount_usd and eth_balance > 0:
-                eth_to_sell = min(eth_balance, 0.1)  # Sell up to 0.1 ETH
+                eth_to_sell = min(eth_balance, 0.07757957)  # Sell up to available ETH
                 usdt_received = self.convert_eth_to_usdt(eth_to_sell)
                 if usdt_received == 0:
                     return False
