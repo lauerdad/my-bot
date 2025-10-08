@@ -10,7 +10,8 @@ import math
 BINANCE_API_KEY = 'ICsKLW8ArFzRJSPHG5ebvk0BCzsXq9nROsctaq3zsG4niOxhoycoMQZPnuCnBums'
 BINANCE_SECRET = 'apMeuoC9VSYmUE80m5zkFKjUmLvqDlzBfiDKE2VbJ9wJVx7PbzooNI26TMfK6TJB'
 COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/tickers?include_exchange_logo=false&precision=2'
-COINGECKO_COIN_URL = 'https://api.coingecko.com/api/v3/coins/%s'
+CMC_API_URL = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/info'
+CMC_API_KEY = '06b8fe2f-9630-4f99-b6f1-0f5f2bc4894e'  # Your CoinMarketCap API key
 
 class WhaleBot:
     def __init__(self):
@@ -120,11 +121,12 @@ class WhaleBot:
         try:
             if coin_id in self.priority_coins:
                 return True  # Skip market cap check for priority coins
-            url = COINGECKO_COIN_URL % coin_id
-            response = requests.get(url)
+            url = CMC_API_URL
+            params = {'symbol': coin_id, 'CMC_PRO_API_KEY': CMC_API_KEY}
+            response = requests.get(url, params=params)
             if response.status_code == 200:
                 data = response.json()
-                market_cap = data.get('market_data', {}).get('market_cap', {}).get('usd', 0)
+                market_cap = data.get('data', {}).get(coin_id, {}).get('quote', {}).get('USD', {}).get('market_cap', 0)
                 if market_cap == 0:
                     print(f"No market cap data for {coin_id}. Skipping as potential risk.")
                     return False
@@ -250,7 +252,7 @@ class WhaleBot:
             buys = []
             for ticker in data['tickers']:
                 if ticker['converted_volume']['usd'] > self.whale_threshold and ticker['target'] == 'USDT' and ticker['base'] not in self.excluded_coins:
-                    if ticker['base'] in self.priority_coins or self.is_low_market_cap(ticker['coin_id']):
+                    if ticker['base'] in self.priority_coins or self.is_low_market_cap(ticker['base']):
                         buys.append(ticker)
                         print(f"Whale buy detected: {ticker['converted_volume']['usd']} USD in {ticker['base']} against {ticker['target']}")
             return buys
