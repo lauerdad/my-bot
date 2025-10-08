@@ -33,13 +33,14 @@ class WhaleBot:
 
     def place_bitsgap_buy_order(self, symbol, amount_usd):
         try:
-            url = 'https://api.bitsgap.com/private/v1/orders'
+            url = 'https://api.bitsgap.com/private/v1/order'
             headers = {
                 'Authorization': f'Bearer {BITSGAP_API_KEY}',
                 'X-API-KEY': BITSGAP_API_KEY,
                 'X-API-SECRET': BITSGAP_SECRET
             }
             payload = {
+                'exchange': 'binanceus',
                 'symbol': symbol,  # e.g., ETHUSDT
                 'amount': amount_usd,
                 'side': 'buy',
