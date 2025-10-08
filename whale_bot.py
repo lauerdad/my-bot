@@ -20,7 +20,7 @@ class WhaleBot:
         self.whale_threshold = 1000000  # $1M+ buys
         self.stop_loss_pct = 0.05  # 5% for quick exits
         self.min_notional = 10.0  # Trade size $10 to meet Binance US minimum
-        self.min_conversion = 5.0  # Minimum $5 for conversions
+        self.min_conversion = 2.0  # Minimum $2 for conversions
         self.max_market_cap = 1000000000  # Max $1B market cap
         self.performance_threshold = 0.05  # Hold if >5% gain in 24h
         self.sell_threshold = 0.0  # Sell if <0% (dropping)
