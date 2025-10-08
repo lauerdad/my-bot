@@ -8,7 +8,8 @@ import hashlib
 # Binance US API keys
 BINANCE_API_KEY = 'ICsKLW8ArFzRJSPHG5ebvk0BCzsXq9nROsctaq3zsG4niOxhoycoMQZPnuCnBums'
 BINANCE_SECRET = 'apMeuoC9VSYmUE80m5zkFKjUmLvqDlzBfiDKE2VbJ9wJVx7PbzooNI26TMfK6TJB'
-COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/tickers?coin_ids=ethereum,solana,aioz-network&include_exchange_logo=false&precision=2'
+COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/tickers?include_exchange_logo=false&precision=2'
+COINGECKO_COIN_URL = 'https://api.coingecko.com/api/v3/coins/%s'
 
 class WhaleBot:
     def __init__(self):
@@ -17,6 +18,7 @@ class WhaleBot:
         self.whale_threshold = 1000000  # M+ buys
         self.stop_loss_pct = 0.10  # 10%
         self.min_notional = 10.0  # Minimum trade size
+        self.min_coin_age_days = 365  # Avoid rug pulls: only coins >1 year old
 
     def get_account_balance(self):
         try:
@@ -31,31 +33,22 @@ class WhaleBot:
             if response.status_code == 200:
                 balances = response.json()['balances']
                 usdt_balance = float(next((b['free'] for b in balances if b['asset'] == 'USDT'), 0))
-                eth_balance = float(next((b['free'] for b in balances if b['asset'] == 'ETH'), 0))
-                sol_balance = float(next((b['free'] for b in balances if b['asset'] == 'SOL'), 0))
-                aioz_balance = float(next((b['free'] for b in balances if b['asset'] == 'AIOZ'), 0))
-                # Calculate portfolio value
                 portfolio_value = usdt_balance
-                if eth_balance > 0:
-                    eth_price = self.get_current_price('ETHUSDT')
-                    if eth_price > 0:
-                        portfolio_value += eth_balance * eth_price
-                if sol_balance > 0:
-                    sol_price = self.get_current_price('SOLUSDT')
-                    if sol_price > 0:
-                        portfolio_value += sol_balance * sol_price
-                if aioz_balance > 0:
-                    aioz_price = self.get_current_price('AIOZUSDT')
-                    if aioz_price > 0:
-                        portfolio_value += aioz_balance * aioz_price
-                print(f"Available USDT balance: {usdt_balance}, ETH balance: {eth_balance}, SOL balance: {sol_balance}, AIOZ balance: {aioz_balance}, Portfolio value: ")
-                return usdt_balance, eth_balance, sol_balance, aioz_balance, portfolio_value
+                asset_balances = {}
+                for b in balances:
+                    if float(b['free']) > 0 and b['asset'] != 'USDT':
+                        price = self.get_current_price(f"{b['asset']}USDT")
+                        if price > 0:
+                            portfolio_value += float(b['free']) * price
+                        asset_balances[b['asset']] = float(b['free'])
+                print(f"Available USDT balance: {usdt_balance}, Asset balances: {asset_balances}, Portfolio value: ")
+                return usdt_balance, asset_balances, portfolio_value
             else:
                 print(f"Balance check failed: {response.text}")
-                return 0, 0, 0, 0, 0
+                return 0, {}, 0
         except Exception as e:
             print(f"Balance check error: {e}")
-            return 0, 0, 0, 0, 0
+            return 0, {}, 0
 
     def get_current_price(self, symbol):
         try:
@@ -64,18 +57,37 @@ class WhaleBot:
             response = requests.get(url, params=params)
             if response.status_code == 200:
                 return float(response.json()['price'])
-            else:
-                print(f"Price fetch failed for {symbol}: {response.text}")
-                return 0
-        except Exception as e:
-            print(f"Price fetch error: {e}")
+            return 0
+        except Exception:
             return 0
 
-    def get_open_orders(self, symbol):
+    def is_coin_safe(self, coin_id):
+        try:
+            url = COINGECKO_COIN_URL % coin_id
+            response = requests.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                genesis_date = data.get('genesis_date')
+                if not genesis_date:
+                    print(f"No genesis date for {coin_id}. Skipping as potential rug pull.")
+                    return False
+                genesis = datetime.strptime(genesis_date, '%Y-%m-%d')
+                age_days = (datetime.now() - genesis).days
+                if age_days < self.min_coin_age_days:
+                    print(f"{coin_id} is only {age_days} days old, less than {self.min_coin_age_days}. Skipping as potential rug pull.")
+                    return False
+                return True
+            print(f"Failed to fetch coin data for {coin_id}: {response.text}")
+            return False
+        except Exception as e:
+            print(f"Coin age check error for {coin_id}: {e}")
+            return False
+
+    def get_open_orders(self):
         try:
             url = 'https://api.binance.us/api/v3/openOrders'
             timestamp = str(int(time.time() * 1000))
-            params = {'symbol': symbol, 'timestamp': timestamp}
+            params = {'timestamp': timestamp}
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
             signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
             params['signature'] = signature
@@ -83,18 +95,19 @@ class WhaleBot:
             response = requests.get(url, headers=headers, params=params)
             if response.status_code == 200:
                 orders = response.json()
-                print(f"Found {len(orders)} open orders for {symbol}")
-                return len(orders)
+                print(f"Found {len(orders)} total open orders across all symbols")
+                return orders
             else:
                 print(f"Failed to fetch open orders: {response.status_code} - {response.text}")
-                return 0
+                return []
         except Exception as e:
             print(f"Fetch open orders error: {e}")
-            return 0
+            return []
 
     def cancel_open_orders(self, symbol):
         try:
-            if self.get_open_orders(symbol) >= 10:  # Only cancel if near limit
+            orders = self.get_open_orders()
+            if len(orders) >= 8:  # Cancel if 8 or more total orders
                 url = 'https://api.binance.us/api/v3/openOrders'
                 timestamp = str(int(time.time() * 1000))
                 params = {'symbol': symbol, 'timestamp': timestamp}
@@ -107,10 +120,10 @@ class WhaleBot:
                     print(f"Canceled open orders for {symbol}")
                     return True
                 else:
-                    print(f"Failed to cancel orders: {response.status_code} - {response.text}")
+                    print(f"Failed to cancel orders for {symbol}: {response.status_code} - {response.text}")
                     return False
             else:
-                print(f"No need to cancel orders for {symbol}: below limit")
+                print(f"No need to cancel orders for {symbol}: {len(orders)} open orders, below limit of 8")
                 return True
         except Exception as e:
             print(f"Cancel orders error: {e}")
@@ -124,8 +137,8 @@ class WhaleBot:
             symbol = f"{asset}USDT"
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
-            precision = 6 if asset == 'ETH' else 2  # ETH: 6 decimals, SOL/AIOZ: 2 decimals
-            rounded_amount = round(amount - (amount % 0.0001), precision)  # Align to step size 0.0001
+            precision = 6 if asset == 'ETH' else 2  # Default precision
+            rounded_amount = round(amount - (amount % 0.0001), precision)
             if rounded_amount < 0.0001:
                 print(f"Rounded amount {rounded_amount} {asset} too small for conversion")
                 return 0
@@ -158,12 +171,13 @@ class WhaleBot:
             response = requests.get(COINGECKO_WHALE_URL)
             response.raise_for_status()
             data = response.json()
-            # Look for large trades on ETH, SOL, AIOZ
             buys = []
             for ticker in data['tickers']:
-                if ticker['base'] in ['ETH', 'SOL', 'AIOZ'] and ticker['converted_volume']['usd'] > self.whale_threshold:
-                    print(f"Whale buy detected: {ticker['converted_volume']['usd']} USD volume on {ticker['target']} for {ticker['base']}")
-                    buys.append(ticker)
+                if ticker['converted_volume']['usd'] > self.whale_threshold and ticker['target'] == 'USDT':
+                    coin_id = ticker['coin_id']
+                    if self.is_coin_safe(coin_id):
+                        buys.append(ticker)
+                        print(f"Whale buy detected: {ticker['converted_volume']['usd']} USD in {ticker['base']} against {ticker['target']}")
             return buys
         except Exception as e:
             print(f"Error fetching whale data: {e}")
@@ -171,16 +185,16 @@ class WhaleBot:
 
     def place_stop_loss_order(self, symbol, quantity, stop_price):
         try:
-            # Only cancel if necessary
             self.cancel_open_orders(symbol)
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
+            precision = 6 if 'ETH' in symbol else 2  # Default precision
             params = {
                 'symbol': symbol,
                 'side': 'SELL',
                 'type': 'STOP_LOSS_LIMIT',
-                'quantity': f"{quantity:.{6 if symbol == 'ETHUSDT' else 2}f}",
-                'price': f"{stop_price * 0.99:.2f}",  # Slightly below stop for execution
+                'quantity': f"{quantity:.{precision}f}",
+                'price': f"{stop_price * 0.99:.2f}",
                 'stopPrice': f"{stop_price:.2f}",
                 'timeInForce': 'GTC',
                 'timestamp': timestamp
@@ -202,17 +216,14 @@ class WhaleBot:
 
     def place_binance_buy_order(self, symbol, amount_usd):
         try:
-            # Check balance and portfolio value
-            usdt_balance, eth_balance, sol_balance, aioz_balance, portfolio_value = self.get_account_balance()
+            usdt_balance, asset_balances, portfolio_value = self.get_account_balance()
             if portfolio_value < self.min_notional:
                 print(f"Portfolio value  below minimum notional {self.min_notional}. Stopping trades.")
                 return False
-            # Convert assets to USDT if needed
             if usdt_balance < amount_usd:
-                for asset, balance in [('ETH', eth_balance), ('SOL', sol_balance), ('AIOZ', aioz_balance)]:
-                    if balance >= 0.0001:  # Minimum lot size
-                        amount_to_sell = round(balance, 6 if asset == 'ETH' else 2)  # Round to correct precision
-                        usdt_received = self.convert_to_usdt(asset, amount_to_sell)
+                for asset, balance in asset_balances.items():
+                    if balance >= 0.0001:
+                        usdt_received = self.convert_to_usdt(asset, balance)
                         if usdt_received > 0:
                             usdt_balance += usdt_received
                         if usdt_balance >= amount_usd:
@@ -226,7 +237,7 @@ class WhaleBot:
                 'symbol': symbol,
                 'side': 'BUY',
                 'type': 'MARKET',
-                'quoteOrderQty': f"{amount_usd:.2f}",  # 2 decimal precision for USD
+                'quoteOrderQty': f"{amount_usd:.2f}",
                 'timestamp': timestamp
             }
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
@@ -241,7 +252,6 @@ class WhaleBot:
                 print(f"Binance: Bought {quantity} {symbol} at {price}, stop loss at {price * 0.9}")
                 with open(self.trades_log, 'a') as f:
                     f.write(f"{datetime.now()}: Binance Bought {quantity} {symbol} at {price}\n")
-                # Place stop-loss order
                 self.place_stop_loss_order(symbol, quantity, price * 0.9)
                 return True
             else:
@@ -252,24 +262,22 @@ class WhaleBot:
             return False
 
     def main(self):
-        print("Auto-Trading Bot Started - Buying Altseason Winners...")
-        allocations = {'ETHUSDT': 10.00, 'SOLUSDT': 10.00, 'AIOZUSDT': 10.00}  # 0 minimum notional
+        print("Auto-Trading Bot Started - Tracking All Whale Buys with Rug Pull Protection...")
         last_tx = {}
         while True:
-            usdt_balance, _, _, _, portfolio_value = self.get_account_balance()
+            usdt_balance, asset_balances, portfolio_value = self.get_account_balance()
             if portfolio_value < self.min_notional:
                 print(f"Portfolio value  below minimum notional {self.min_notional}. Stopping bot.")
                 break
-            for symbol, amount in allocations.items():
-                if amount == 0:
-                    continue  # Skip if no allocation
-                currency = symbol.split('USDT')[0].lower()
-                buys = self.get_whale_buys()
-                for tx in buys:
-                    unique_id = f"{tx['market']['identifier']}_{tx['timestamp']}"
-                    if tx['base'].lower() == currency and unique_id not in last_tx.get(currency, []):
+            buys = self.get_whale_buys()
+            for tx in buys:
+                symbol = f"{tx['base']}USDT"
+                currency = tx['base'].lower()
+                unique_id = f"{tx['market']['identifier']}_{tx['timestamp']}"
+                if currency not in last_tx or unique_id not in last_tx[currency]:
+                    if self.get_current_price(symbol) > 0:
                         print(f"Whale buy detected: {tx['converted_volume']['usd']} USD in {currency}")
-                        self.place_binance_buy_order(symbol, amount)  # Use minimum notional amount
+                        self.place_binance_buy_order(symbol, self.min_notional)
                         last_tx.setdefault(currency, []).append(unique_id)
                         if len(last_tx[currency]) > 10:
                             last_tx[currency].pop(0)
