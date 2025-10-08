@@ -49,11 +49,12 @@ class WhaleBot:
             symbol = f"{asset}USDT"
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
+            precision = 6 if asset == 'ETH' else 2  # ETH: 6 decimals, SOL/AIOZ: 2 decimals
             params = {
                 'symbol': symbol,
                 'side': 'SELL',
                 'type': 'MARKET',
-                'quantity': f"{amount:.6f}" if asset == 'ETH' else f"{amount:.2f}",  # ETH: 6 decimals, SOL/AIOZ: 2 decimals
+                'quantity': f"{amount:.{precision}f}",  # Dynamic precision
                 'timestamp': timestamp
             }
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
@@ -64,7 +65,7 @@ class WhaleBot:
             if response.status_code == 200:
                 order = response.json()
                 usdt_received = float(order['cummulativeQuoteQty'])
-                print(f"Converted {amount:.6f if asset == 'ETH' else amount:.2f} {asset} to {usdt_received} USDT")
+                print(f"Converted {amount:.{precision}f} {asset} to {usdt_received} USDT")
                 return usdt_received
             else:
                 print(f"{asset} to USDT conversion failed: {response.status_code} - {response.text}")
@@ -91,12 +92,17 @@ class WhaleBot:
 
     def place_binance_buy_order(self, symbol, amount_usd):
         try:
-            # Check balance and convert all available ETH to USDT if needed
+            # Check balance and convert all available assets to USDT if needed
             usdt_balance, eth_balance, sol_balance, aioz_balance = self.get_account_balance()
-            if usdt_balance < amount_usd and eth_balance > 0:
-                usdt_received = self.convert_to_usdt('ETH', eth_balance)  # Sell all available ETH
-                if usdt_received > 0:
-                    usdt_balance += usdt_received
+            if usdt_balance < amount_usd:
+                for asset, balance in [('ETH', eth_balance), ('SOL', sol_balance), ('AIOZ', aioz_balance)]:
+                    if balance > 0:
+                        amount_to_sell = round(balance, 6 if asset == 'ETH' else 2)  # Round to correct precision
+                        usdt_received = self.convert_to_usdt(asset, amount_to_sell)
+                        if usdt_received > 0:
+                            usdt_balance += usdt_received
+                        if usdt_balance >= amount_usd:
+                            break
             if usdt_balance < amount_usd:
                 print(f"Insufficient USDT balance: {usdt_balance} < {amount_usd}")
                 return False
