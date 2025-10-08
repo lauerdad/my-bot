@@ -59,7 +59,7 @@ class WhaleBot:
                         asset_balances[b['asset']] = float(b['free'])
                 # Sell excluded coins immediately
                 for asset in self.excluded_coins:
-                    if asset in asset_balances and asset_balances[asset] >= 0.0001:
+                    if asset in asset_balances and asset_balances[asset] >= 0.000001:
                         usdt_received = self.convert_to_usdt(asset, asset_balances[asset])
                         if usdt_received > 0:
                             usdt_balance += usdt_received
@@ -184,7 +184,7 @@ class WhaleBot:
 
     def convert_to_usdt(self, asset, amount):
         try:
-            if amount < 0.0001:
+            if amount < 0.000001:
                 print(f"Amount {amount} {asset} too small for conversion")
                 return 0
             symbol = f"{asset}USDT"
@@ -192,7 +192,7 @@ class WhaleBot:
             timestamp = str(self.get_server_time())
             precision = self.get_symbol_precision(symbol)
             rounded_amount = round(amount, precision)
-            if rounded_amount < 0.0001:
+            if rounded_amount < 0.000001:
                 print(f"Rounded amount {rounded_amount} {asset} too small for conversion")
                 return 0
             params = {
@@ -223,7 +223,7 @@ class WhaleBot:
     def sell_underperforming(self, asset_balances):
         usdt_balance = 0
         for asset, balance in asset_balances.items():
-            if asset in self.excluded_coins or balance < 0.0001:
+            if asset in self.excluded_coins or balance < 0.000001:
                 continue
             price_change = self.get_price_change(f"{asset}USDT")
             if price_change >= self.performance_threshold:
