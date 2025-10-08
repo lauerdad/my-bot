@@ -35,7 +35,7 @@ class WhaleBot:
 
     def place_bitsgap_buy_order(self, symbol, amount_usd):
         try:
-            url = 'https://api.bitsgap.com/private/v1/trading/order'
+            url = 'https://api.bitsgap.com/private/v1/trading/orders'
             timestamp = str(int(time.time() * 1000))
             payload = {
                 'exchange': 'binanceus',
