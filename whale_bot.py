@@ -95,6 +95,35 @@ class WhaleBot:
             print(f"Error fetching whale data: {e}")
             return []
 
+    def place_stop_loss_order(self, symbol, quantity, stop_price):
+        try:
+            url = 'https://api.binance.us/api/v3/order'
+            timestamp = str(int(time.time() * 1000))
+            params = {
+                'symbol': symbol,
+                'side': 'SELL',
+                'type': 'STOP_LOSS_LIMIT',
+                'quantity': f"{quantity:.{6 if symbol == 'ETHUSDT' else 2}f}",
+                'price': f"{stop_price * 0.99:.2f}",  # Slightly below stop for execution
+                'stopPrice': f"{stop_price:.2f}",
+                'timeInForce': 'GTC',
+                'timestamp': timestamp
+            }
+            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+            signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
+            params['signature'] = signature
+            headers = {'X-MBX-APIKEY': BINANCE_API_KEY}
+            response = requests.post(url, headers=headers, params=params)
+            if response.status_code == 200:
+                print(f"Stop-loss order placed for {quantity} {symbol} at {stop_price}")
+                return True
+            else:
+                print(f"Stop-loss order failed: {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            print(f"Stop-loss error: {e}")
+            return False
+
     def place_binance_buy_order(self, symbol, amount_usd):
         try:
             # Check balance
@@ -123,6 +152,8 @@ class WhaleBot:
                 print(f"Binance: Bought {quantity} {symbol} at {price}, stop loss at {price * 0.9}")
                 with open(self.trades_log, 'a') as f:
                     f.write(f"{datetime.now()}: Binance Bought {quantity} {symbol} at {price}\n")
+                # Place stop-loss order
+                self.place_stop_loss_order(symbol, quantity, price * 0.9)
                 return True
             else:
                 print(f"Binance order failed: {response.status_code} - {response.text}")
