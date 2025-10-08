@@ -12,7 +12,7 @@ COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/ticker
 
 class WhaleBot:
     def __init__(self):
-        self.portfolio = 348.00  # Updated balance 48.00
+        self.portfolio = 9.00  # Updated balance ~ USDT
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # M+ buys
         self.stop_loss_pct = 0.10  # 10%
@@ -138,7 +138,7 @@ class WhaleBot:
 
     def main(self):
         print("Auto-Trading Bot Started - Buying Altseason Winners...")
-        allocations = {'ETHUSDT': 4.90, 'SOLUSDT': 4.91, 'AIOZUSDT': 0.0}  # Adjusted to .81 USDT
+        allocations = {'ETHUSDT': 0.45, 'SOLUSDT': 0.45, 'AIOZUSDT': 0.0}  # Adjusted to /usr/bin/bash.45 USDT
         last_tx = {}
         while True:
             for symbol, amount in allocations.items():
