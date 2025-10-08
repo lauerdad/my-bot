@@ -50,11 +50,12 @@ class WhaleBot:
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
             precision = 6 if asset == 'ETH' else 2  # ETH: 6 decimals, SOL/AIOZ: 2 decimals
+            rounded_amount = round(amount, precision)  # Round to step size
             params = {
                 'symbol': symbol,
                 'side': 'SELL',
                 'type': 'MARKET',
-                'quantity': f"{amount:.{precision}f}",  # Dynamic precision
+                'quantity': f"{rounded_amount:.{precision}f}",
                 'timestamp': timestamp
             }
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
@@ -65,7 +66,7 @@ class WhaleBot:
             if response.status_code == 200:
                 order = response.json()
                 usdt_received = float(order['cummulativeQuoteQty'])
-                print(f"Converted {amount:.{precision}f} {asset} to {usdt_received} USDT")
+                print(f"Converted {rounded_amount:.{precision}f} {asset} to {usdt_received} USDT")
                 return usdt_received
             else:
                 print(f"{asset} to USDT conversion failed: {response.status_code} - {response.text}")
@@ -137,17 +138,19 @@ class WhaleBot:
 
     def main(self):
         print("Auto-Trading Bot Started - Buying Altseason Winners...")
-        allocations = {'ETHUSDT': 138.33, 'SOLUSDT': 103.74, 'AIOZUSDT': 103.75}  # 48.00 split
+        allocations = {'ETHUSDT': 4.90, 'SOLUSDT': 4.91, 'AIOZUSDT': 0.0}  # Adjusted to .81 USDT
         last_tx = {}
         while True:
             for symbol, amount in allocations.items():
+                if amount == 0:
+                    continue  # Skip AIOZ if no allocation
                 currency = symbol.split('USDT')[0].lower()
                 buys = self.get_whale_buys()
                 for tx in buys:
                     unique_id = f"{tx['market']['identifier']}_{tx['timestamp']}"
                     if tx['base'].lower() == currency and unique_id not in last_tx.get(currency, []):
                         print(f"Whale buy detected: {tx['converted_volume']['usd']} USD in {currency}")
-                        self.place_binance_buy_order(symbol, amount * 0.3)  # 30% of allocation
+                        self.place_binance_buy_order(symbol, amount)  # Use full allocated amount
                         last_tx.setdefault(currency, []).append(unique_id)
                         if len(last_tx[currency]) > 10:
                             last_tx[currency].pop(0)
