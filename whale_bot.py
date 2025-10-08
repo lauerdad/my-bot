@@ -12,7 +12,7 @@ COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/ticker
 
 class WhaleBot:
     def __init__(self):
-        self.portfolio = 334.83  # Updated balance 34.83 USDT
+        self.portfolio = 334.83  # Updated balance 34.83
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # M+ buys
         self.stop_loss_pct = 0.10  # 10%
@@ -41,6 +41,26 @@ class WhaleBot:
         except Exception as e:
             print(f"Balance check error: {e}")
             return 0, 0, 0, 0
+
+    def cancel_open_orders(self, symbol):
+        try:
+            url = 'https://api.binance.us/api/v3/openOrders'
+            timestamp = str(int(time.time() * 1000))
+            params = {'symbol': symbol, 'timestamp': timestamp}
+            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+            signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
+            params['signature'] = signature
+            headers = {'X-MBX-APIKEY': BINANCE_API_KEY}
+            response = requests.delete(url, headers=headers, params=params)
+            if response.status_code == 200:
+                print(f"Canceled open orders for {symbol}")
+                return True
+            else:
+                print(f"Failed to cancel orders: {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            print(f"Cancel orders error: {e}")
+            return False
 
     def convert_to_usdt(self, asset, amount):
         try:
@@ -97,6 +117,8 @@ class WhaleBot:
 
     def place_stop_loss_order(self, symbol, quantity, stop_price):
         try:
+            # Cancel existing stop-loss orders to avoid MAX_NUM_ALGO_ORDERS
+            self.cancel_open_orders(symbol)
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
             params = {
