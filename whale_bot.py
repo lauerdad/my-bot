@@ -4,13 +4,13 @@ from datetime import datetime
 import json
 
 # API keys
-BITSGAP_API_KEY = 'f6CPOeYEIFEnRfj4y4ue61nFdjKBn1r8jnSD77PviV25bJPgldxBhyo4FWlxH9fR'
-BITSGAP_SECRET = 'sDnEvppRzCFW1Ce0TiChFzVf6PGHgM32GqHPPiu2m5KeoEPheAwmTwiXhjXCOGaH'
+BITSGAP_API_KEY = 'ebtoJV5J4z5f7wcNqvtshHJliSTup0K1RPxygeIwMKeODRaI0TPlfRLAp3fbQiJ3'
+BITSGAP_SECRET = '1PW8sineWppQvvK9gemiOUTodipJKvSENCGNkqPiBPUE2CmHLlpdqu4tmmc2k3yM'
 COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/tickers?coin_ids=ethereum&include_exchange_logo=false&precision=2'
 
 class WhaleBot:
     def __init__(self):
-        self.portfolio = 346.30  # Updated balance 46.30
+        self.portfolio = 345.82  # Updated balance 45.82
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # M+ buys
         self.stop_loss_pct = 0.10  # 10%
@@ -58,7 +58,7 @@ class WhaleBot:
 
     def main(self):
         print("Auto-Trading Bot Started - Buying Altseason Winners...")
-        allocations = {'ETH/USDT': 138.52, 'SOL/USDT': 103.89, 'AIOZ/USDT': 103.89}  # 46.30 split
+        allocations = {'ETH/USDT': 138.33, 'SOL/USDT': 103.74, 'AIOZ/USDT': 103.75}  # 45.82 split
         last_tx = {}
         while True:
             for symbol, amount in allocations.items():
