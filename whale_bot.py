@@ -19,12 +19,12 @@ class WhaleBot:
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # $1M+ buys
         self.stop_loss_pct = 0.05  # 5% for quick exits
-        self.min_notional = 3.0   # Trade size $3 for low balance
+        self.min_notional = 10.0  # Trade size $10 to meet Binance US minimum
         self.max_market_cap = 1000000000  # Max $1B market cap
         self.performance_threshold = 0.05  # Hold if >5% gain in 24h
         self.sell_threshold = 0.0  # Sell if <0% (dropping)
         self.excluded_coins = ['BTC', 'ETH', 'BNB', 'USDC', 'SOL', 'DOGE', 'ADA']  # Exclude high-cap coins
-        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA', 'FOUR', 'AVANTIS', 'AVNT', 'HEMI', 'OPEN', 'MIRA', 'S', 'TUT', 'NEIRO', 'AAVE', 'ONDO', 'HBAR', 'CRV', 'WLFI', 'ARB', 'OP', 'LDO', 'TWT', 'XLM', 'WBTC', 'BCH', 'PEPE', 'SEI', 'BONK', 'PLUME', 'SOMI', 'TAO', 'LINEA']  # Expanded priority coins
+        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA', 'FOUR', 'AVANTIS', 'AVNT', 'HEMI', 'OPEN', 'MIRA', 'S', 'TUT', 'NEIRO', 'AAVE', 'ONDO', 'HBAR', 'CRV', 'WLFI', 'ARB', 'OP', 'LDO', 'TWT', 'XLM', 'WBTC', 'BCH', 'PEPE', 'SEI', 'BONK', 'PLUME', 'SOMI', 'TAO', 'LINEA', 'XPLA', 'SUI', 'PUMP']  # Expanded priority coins
         self.market_cap_cache = {}  # Cache for market cap data
         self.cache_expiry = 3600  # Cache for 1 hour
 
@@ -133,10 +133,10 @@ class WhaleBot:
                     print(f"{coin_id} market cap ${market_cap:,} exceeds ${self.max_market_cap:,} (cached). Skipping.")
                     return False
                 return True
-            # Map ticker to CoinMarketCap symbol if needed
+            # Map ticker to CoinMarketCap symbol
             symbol_map = {
-                'XPL': 'XPLA', 'USDE': 'ETHENA-USDE', 'FORM': 'FORMATION-FI', 'CAKE': 'PANCAKESWAP', 'SUI': 'SUI', 'PUMP': 'PUMP-FUN',
-                'BROCCOLI714': 'BROCCOLI', 'BEAMX': 'BEAM', 'USD1': 'WORLD-LIBERTY-FINANCIAL', 'MUBARAK': 'MUBARAK', 'XUSD': 'XUSD'
+                'XPL': 'XPLA', 'USDE': 'ETHA', 'FORM': 'FORM', 'CAKE': 'CAKE', 'SUI': 'SUI', 'PUMP': 'PUMP',
+                'BROCCOLI714': 'BROCCOLI', 'BEAMX': 'BEAM', 'USD1': 'WLFI', 'MUBARAK': 'MUBARAK', 'XUSD': 'XUSD'
             }
             cmc_symbol = symbol_map.get(coin_id, coin_id)
             url = CMC_API_URL
@@ -344,11 +344,7 @@ class WhaleBot:
                 print(f"Binance: Bought {quantity} {symbol} at {price}, stop loss at {price * (1 - self.stop_loss_pct)}")
                 with open(self.trades_log, 'a') as f:
                     f.write(f"{datetime.now()}: Binance Bought {quantity} {symbol} at {price}\n")
-                self.place_stop_loss_order(symbol, quantity, price * (1 - self.stop_loss_pct))
-                return True
-            else:
-                print(f"Binance order failed: {response.status_code} - {response.text}")
-                return False
+                self.place_stop_loss_order(symbol, quantity, return False
         except Exception as e:
             print(f"Binance error: {e}")
             return False
