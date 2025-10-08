@@ -16,13 +16,25 @@ class WhaleBot:
         self.portfolio = 334.83  # Initial balance 34.83
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # M+ buys
-        self.stop_loss_pct = 0.05  # Reduced to 5% for more upside
-        self.min_notional = 100.0  # Increased trade size 00 for bigger gains
+        self.stop_loss_pct = 0.05  # 5% for more upside
+        self.min_notional = 30.0  # Trade size 0 for more trades
+        self.safe_coins = ['ETH', 'SOL', 'BTC', 'BNB', 'ADA', 'XRP', 'DOGE', 'LTC', 'LINK', 'UNI', 'AVAX', 'NEAR', 'APT', 'DOT', 'TRX', 'MATIC', 'SHIB']  # Volatile alts
+
+    def get_server_time(self):
+        try:
+            url = 'https://api.binance.us/api/v3/time'
+            response = requests.get(url)
+            if response.status_code == 200:
+                return int(response.json()['serverTime'])
+            return int(time.time() * 1000)
+        except Exception as e:
+            print(f"Server time fetch error: {e}")
+            return int(time.time() * 1000)
 
     def get_account_balance(self):
         try:
             url = 'https://api.binance.us/api/v3/account'
-            timestamp = str(int(time.time() * 1000))
+            timestamp = str(self.get_server_time())
             params = {'timestamp': timestamp}
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
             signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
@@ -60,10 +72,27 @@ class WhaleBot:
         except Exception:
             return 0
 
+    def get_symbol_precision(self, symbol):
+        try:
+            url = 'https://api.binance.us/api/v3/exchangeInfo'
+            params = {'symbol': symbol}
+            response = requests.get(url, params=params)
+            if response.status_code == 200:
+                symbol_info = response.json()['symbols'][0]
+                for f in symbol_info['filters']:
+                    if f['filterType'] == 'LOT_SIZE':
+                        step_size = float(f['stepSize'])
+                        precision = int(-math.log10(step_size))
+                        return precision
+            return 6  # Default precision
+        except Exception as e:
+            print(f"Symbol precision error for {symbol}: {e}")
+            return 6
+
     def get_open_orders(self):
         try:
             url = 'https://api.binance.us/api/v3/openOrders'
-            timestamp = str(int(time.time() * 1000))
+            timestamp = str(self.get_server_time())
             params = {'timestamp': timestamp}
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
             signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
@@ -86,7 +115,7 @@ class WhaleBot:
             orders = self.get_open_orders()
             if len(orders) >= 8:
                 url = 'https://api.binance.us/api/v3/openOrders'
-                timestamp = str(int(time.time() * 1000))
+                timestamp = str(self.get_server_time())
                 params = {'symbol': symbol, 'timestamp': timestamp}
                 query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
                 signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
@@ -113,9 +142,9 @@ class WhaleBot:
                 return 0
             symbol = f"{asset}USDT"
             url = 'https://api.binance.us/api/v3/order'
-            timestamp = str(int(time.time() * 1000))
-            precision = 6 if asset == 'ETH' else 2  # ETH: 6 decimals, SOL/AIOZ: 2 decimals
-            rounded_amount = round(amount - (amount % 0.0001), precision)  # Align to step size 0.0001
+            timestamp = str(self.get_server_time())
+            precision = self.get_symbol_precision(symbol)
+            rounded_amount = round(amount - (amount % 0.0001), precision)
             if rounded_amount < 0.0001:
                 print(f"Rounded amount {rounded_amount} {asset} too small for conversion")
                 return 0
@@ -163,7 +192,7 @@ class WhaleBot:
         try:
             self.cancel_open_orders(symbol)
             url = 'https://api.binance.us/api/v3/order'
-            timestamp = str(int(time.time() * 1000))
+            timestamp = str(self.get_server_time())
             precision = self.get_symbol_precision(symbol)
             params = {
                 'symbol': symbol,
@@ -198,7 +227,7 @@ class WhaleBot:
                 return False
             if usdt_balance < amount_usd:
                 for asset, balance in asset_balances.items():
-                    if balance >= 0.0001:
+                    if asset != 'XRP' and balance >= 0.0001:  # Prioritize holding XRP
                         usdt_received = self.convert_to_usdt(asset, balance)
                         if usdt_received > 0:
                             usdt_balance += usdt_received
@@ -208,7 +237,7 @@ class WhaleBot:
                 print(f"Insufficient USDT balance: {usdt_balance} < {amount_usd}")
                 return False
             url = 'https://api.binance.us/api/v3/order'
-            timestamp = str(int(time.time() * 1000))
+            timestamp = str(self.get_server_time())
             params = {
                 'symbol': symbol,
                 'side': 'BUY',
@@ -225,10 +254,10 @@ class WhaleBot:
                 order = response.json()
                 price = float(order['fills'][0]['price'])
                 quantity = float(order['executedQty'])
-                print(f"Binance: Bought {quantity} {symbol} at {price}, stop loss at {price * 0.9}")
+                print(f"Binance: Bought {quantity} {symbol} at {price}, stop loss at {price * (1 - self.stop_loss_pct)}")
                 with open(self.trades_log, 'a') as f:
                     f.write(f"{datetime.now()}: Binance Bought {quantity} {symbol} at {price}\n")
-                self.place_stop_loss_order(symbol, quantity, price * 0.9)
+                self.place_stop_loss_order(symbol, quantity, price * (1 - self.stop_loss_pct))
                 return True
             else:
                 print(f"Binance order failed: {response.status_code} - {response.text}")
@@ -252,8 +281,10 @@ class WhaleBot:
                 unique_id = f"{tx['market']['identifier']}_{tx['timestamp']}"
                 if currency not in last_tx or unique_id not in last_tx[currency]:
                     if self.get_current_price(symbol) > 0:
+                        # Prioritize XRP trades
+                        amount = self.min_notional * 2 if currency == 'xrp' else self.min_notional
                         print(f"Whale buy detected: {tx['converted_volume']['usd']} USD in {currency}")
-                        self.place_binance_buy_order(symbol, self.min_notional)
+                        self.place_binance_buy_order(symbol, amount)
                         last_tx.setdefault(currency, []).append(unique_id)
                         if len(last_tx[currency]) > 10:
                             last_tx[currency].pop(0)
