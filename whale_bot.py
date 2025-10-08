@@ -20,6 +20,7 @@ class WhaleBot:
         self.whale_threshold = 1000000  # $1M+ buys
         self.stop_loss_pct = 0.05  # 5% for quick exits
         self.min_notional = 10.0  # Trade size $10 to meet Binance US minimum
+        self.min_conversion = 5.0  # Minimum $5 for conversions
         self.max_market_cap = 1000000000  # Max $1B market cap
         self.performance_threshold = 0.05  # Hold if >5% gain in 24h
         self.sell_threshold = 0.0  # Sell if <0% (dropping)
@@ -27,6 +28,7 @@ class WhaleBot:
         self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA', 'FOUR', 'AVANTIS', 'AVNT', 'HEMI', 'OPEN', 'MIRA', 'S', 'TUT', 'NEIRO', 'AAVE', 'ONDO', 'HBAR', 'CRV', 'WLFI', 'ARB', 'OP', 'LDO', 'TWT', 'XLM', 'WBTC', 'BCH', 'PEPE', 'SEI', 'BONK', 'PLUME', 'SOMI', 'TAO', 'LINEA', 'XPLA', 'SUI', 'PUMP', 'FDUSD', 'API3', 'ORDI', 'PENDLE', 'THE', 'WLD']  # Expanded priority coins
         self.market_cap_cache = {}  # Cache for market cap data
         self.cache_expiry = 3600  # Cache for 1 hour
+        self.valid_pairs = []  # Cache for valid trading pairs
 
     def get_server_time(self):
         try:
@@ -38,6 +40,22 @@ class WhaleBot:
         except Exception as e:
             print(f"Server time fetch error: {e}")
             return int(time.time() * 1000)
+
+    def get_valid_pairs(self):
+        try:
+            if self.valid_pairs:
+                return self.valid_pairs
+            url = 'https://api.binance.us/api/v3/exchangeInfo'
+            response = requests.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                self.valid_pairs = [s['symbol'] for s in data['symbols'] if s['status'] == 'TRADING']
+                return self.valid_pairs
+            print(f"Failed to fetch exchange info: {response.text}")
+            return []
+        except Exception as e:
+            print(f"Exchange info error: {e}")
+            return []
 
     def get_account_balance(self):
         try:
@@ -64,7 +82,7 @@ class WhaleBot:
                 for asset in self.excluded_coins:
                     if asset in asset_balances and asset_balances[asset] >= 0.000001:
                         price = self.get_current_price(f"{asset}USDT")
-                        if price * asset_balances[asset] >= 10:  # Ensure minimum USDT value
+                        if price * asset_balances[asset] >= self.min_conversion:  # Ensure minimum conversion value
                             usdt_received = self.convert_to_usdt(asset, asset_balances[asset])
                             if usdt_received > 0:
                                 usdt_balance += usdt_received
@@ -191,15 +209,18 @@ class WhaleBot:
                 params = {'symbol': symbol, 'timestamp': timestamp, 'recvWindow': 10000}
                 query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
                 signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
-            params['signature'] = signature
-            headers = {'X-MBX-APIKEY': BINANCE_API_KEY}
-            response = requests.delete(url, headers=headers, params=params)
-            if response.status_code == 200:
-                print(f"Canceled open orders for {symbol}")
-                return True
+                params['signature'] = signature
+                headers = {'X-MBX-APIKEY': BINANCE_API_KEY}
+                response = requests.delete(url, headers=headers, params=params)
+                if response.status_code == 200:
+                    print(f"Canceled open orders for {symbol}")
+                    return True
+                else:
+                    print(f"Failed to cancel orders for {symbol}: {response.status_code} - {response.text}")
+                    return False
             else:
-                print(f"Failed to cancel orders for {symbol}: {response.status_code} - {response.text}")
-                return False
+                print(f"No need to cancel orders for {symbol}: {len(orders)} open orders, below limit of 8")
+                return True
         except Exception as e:
             print(f"Cancel orders error: {e}")
             return False
@@ -210,6 +231,9 @@ class WhaleBot:
                 print(f"Amount {amount} {asset} too small for conversion")
                 return 0
             symbol = f"{asset}USDT"
+            if symbol not in self.get_valid_pairs():
+                print(f"Trading pair {symbol} not available on Binance US. Skipping.")
+                return 0
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(self.get_server_time())
             precision = self.get_symbol_precision(symbol)
@@ -218,8 +242,8 @@ class WhaleBot:
                 print(f"Rounded amount {rounded_amount} {asset} too small for conversion")
                 return 0
             price = self.get_current_price(symbol)
-            if price * rounded_amount < 10:  # Ensure minimum USDT value
-                print(f"Value {price * rounded_amount} USDT for {rounded_amount} {asset} below minimum $10. Skipping.")
+            if price * rounded_amount < self.min_conversion:
+                print(f"Value {price * rounded_amount} USDT for {rounded_amount} {asset} below minimum ${self.min_conversion}. Skipping.")
                 return 0
             params = {
                 'symbol': symbol,
@@ -268,8 +292,13 @@ class WhaleBot:
             response.raise_for_status()
             data = response.json()
             buys = []
+            valid_pairs = self.get_valid_pairs()
             for ticker in data['tickers']:
                 if ticker['converted_volume']['usd'] > self.whale_threshold and ticker['target'] == 'USDT' and ticker['base'] not in self.excluded_coins:
+                    symbol = f"{ticker['base']}USDT"
+                    if symbol not in valid_pairs:
+                        print(f"Trading pair {symbol} not available on Binance US. Skipping.")
+                        continue
                     if ticker['base'] in self.priority_coins or self.is_low_market_cap(ticker['base']):
                         buys.append(ticker)
                         print(f"Whale buy detected: {ticker['converted_volume']['usd']} USD in {ticker['base']} against {ticker['target']}")
@@ -312,6 +341,9 @@ class WhaleBot:
 
     def place_binance_buy_order(self, symbol, amount_usd):
         try:
+            if symbol not in self.get_valid_pairs():
+                print(f"Trading pair {symbol} not available on Binance US. Skipping.")
+                return False
             usdt_balance, asset_balances, portfolio_value = self.get_account_balance()
             if portfolio_value < self.min_notional:
                 print(f"Portfolio value ${portfolio_value:.2f} below minimum notional {self.min_notional}. Stopping trades.")
