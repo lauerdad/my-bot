@@ -34,17 +34,20 @@ class WhaleBot:
                 eth_balance = float(next((b['free'] for b in balances if b['asset'] == 'ETH'), 0))
                 sol_balance = float(next((b['free'] for b in balances if b['asset'] == 'SOL'), 0))
                 aioz_balance = float(next((b['free'] for b in balances if b['asset'] == 'AIOZ'), 0))
-                # Estimate portfolio value
+                # Calculate portfolio value
                 portfolio_value = usdt_balance
                 if eth_balance > 0:
                     eth_price = self.get_current_price('ETHUSDT')
-                    portfolio_value += eth_balance * eth_price
+                    if eth_price > 0:
+                        portfolio_value += eth_balance * eth_price
                 if sol_balance > 0:
                     sol_price = self.get_current_price('SOLUSDT')
-                    portfolio_value += sol_balance * sol_price
+                    if sol_price > 0:
+                        portfolio_value += sol_balance * sol_price
                 if aioz_balance > 0:
                     aioz_price = self.get_current_price('AIOZUSDT')
-                    portfolio_value += aioz_balance * aioz_price
+                    if aioz_price > 0:
+                        portfolio_value += aioz_balance * aioz_price
                 print(f"Available USDT balance: {usdt_balance}, ETH balance: {eth_balance}, SOL balance: {sol_balance}, AIOZ balance: {aioz_balance}, Portfolio value: ")
                 return usdt_balance, eth_balance, sol_balance, aioz_balance, portfolio_value
             else:
@@ -68,7 +71,7 @@ class WhaleBot:
             print(f"Price fetch error: {e}")
             return 0
 
-    def cancel_open_orders(self, symbol):
+    def get_open_orders(self, symbol):
         try:
             url = 'https://api.binance.us/api/v3/openOrders'
             timestamp = str(int(time.time() * 1000))
@@ -77,13 +80,38 @@ class WhaleBot:
             signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
             params['signature'] = signature
             headers = {'X-MBX-APIKEY': BINANCE_API_KEY}
-            response = requests.delete(url, headers=headers, params=params)
+            response = requests.get(url, headers=headers, params=params)
             if response.status_code == 200:
-                print(f"Canceled open orders for {symbol}")
-                return True
+                orders = response.json()
+                print(f"Found {len(orders)} open orders for {symbol}")
+                return len(orders)
             else:
-                print(f"Failed to cancel orders: {response.status_code} - {response.text}")
-                return False
+                print(f"Failed to fetch open orders: {response.status_code} - {response.text}")
+                return 0
+        except Exception as e:
+            print(f"Fetch open orders error: {e}")
+            return 0
+
+    def cancel_open_orders(self, symbol):
+        try:
+            if self.get_open_orders(symbol) >= 10:  # Only cancel if near limit
+                url = 'https://api.binance.us/api/v3/openOrders'
+                timestamp = str(int(time.time() * 1000))
+                params = {'symbol': symbol, 'timestamp': timestamp}
+                query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+                signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
+                params['signature'] = signature
+                headers = {'X-MBX-APIKEY': BINANCE_API_KEY}
+                response = requests.delete(url, headers=headers, params=params)
+                if response.status_code == 200:
+                    print(f"Canceled open orders for {symbol}")
+                    return True
+                else:
+                    print(f"Failed to cancel orders: {response.status_code} - {response.text}")
+                    return False
+            else:
+                print(f"No need to cancel orders for {symbol}: below limit")
+                return True
         except Exception as e:
             print(f"Cancel orders error: {e}")
             return False
@@ -143,7 +171,7 @@ class WhaleBot:
 
     def place_stop_loss_order(self, symbol, quantity, stop_price):
         try:
-            # Cancel existing stop-loss orders
+            # Only cancel if necessary
             self.cancel_open_orders(symbol)
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
@@ -174,10 +202,23 @@ class WhaleBot:
 
     def place_binance_buy_order(self, symbol, amount_usd):
         try:
-            # Check balance
+            # Check balance and portfolio value
             usdt_balance, eth_balance, sol_balance, aioz_balance, portfolio_value = self.get_account_balance()
-            if usdt_balance < self.min_notional:
-                print(f"Insufficient USDT balance: {usdt_balance} < {self.min_notional}. Stopping trades.")
+            if portfolio_value < self.min_notional:
+                print(f"Portfolio value  below minimum notional {self.min_notional}. Stopping trades.")
+                return False
+            # Convert assets to USDT if needed
+            if usdt_balance < amount_usd:
+                for asset, balance in [('ETH', eth_balance), ('SOL', sol_balance), ('AIOZ', aioz_balance)]:
+                    if balance >= 0.0001:  # Minimum lot size
+                        amount_to_sell = round(balance, 6 if asset == 'ETH' else 2)  # Round to correct precision
+                        usdt_received = self.convert_to_usdt(asset, amount_to_sell)
+                        if usdt_received > 0:
+                            usdt_balance += usdt_received
+                        if usdt_balance >= amount_usd:
+                            break
+            if usdt_balance < amount_usd:
+                print(f"Insufficient USDT balance: {usdt_balance} < {amount_usd}")
                 return False
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
@@ -216,8 +257,8 @@ class WhaleBot:
         last_tx = {}
         while True:
             usdt_balance, _, _, _, portfolio_value = self.get_account_balance()
-            if usdt_balance < self.min_notional:
-                print(f"USDT balance {usdt_balance} below minimum notional {self.min_notional}. Stopping bot.")
+            if portfolio_value < self.min_notional:
+                print(f"Portfolio value  below minimum notional {self.min_notional}. Stopping bot.")
                 break
             for symbol, amount in allocations.items():
                 if amount == 0:
