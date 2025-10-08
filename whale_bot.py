@@ -17,6 +17,28 @@ class WhaleBot:
         self.whale_threshold = 1000000  # M+ buys
         self.stop_loss_pct = 0.10  # 10%
 
+    def get_account_balance(self):
+        try:
+            url = 'https://api.binance.us/api/v3/account'
+            timestamp = str(int(time.time() * 1000))
+            params = {'timestamp': timestamp}
+            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+            signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
+            params['signature'] = signature
+            headers = {'X-MBX-APIKEY': BINANCE_API_KEY}
+            response = requests.get(url, headers=headers, params=params)
+            if response.status_code == 200:
+                balances = response.json()['balances']
+                usdt_balance = float(next((b['free'] for b in balances if b['asset'] == 'USDT'), 0))
+                print(f"Available USDT balance: {usdt_balance}")
+                return usdt_balance
+            else:
+                print(f"Balance check failed: {response.text}")
+                return 0
+        except Exception as e:
+            print(f"Balance check error: {e}")
+            return 0
+
     def get_whale_buys(self):
         try:
             response = requests.get(COINGECKO_WHALE_URL)
@@ -35,6 +57,11 @@ class WhaleBot:
 
     def place_binance_buy_order(self, symbol, amount_usd):
         try:
+            # Check balance before placing order
+            usdt_balance = self.get_account_balance()
+            if usdt_balance < amount_usd:
+                print(f"Insufficient USDT balance: {usdt_balance} < {amount_usd}")
+                return False
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
             params = {
