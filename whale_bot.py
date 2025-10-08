@@ -18,12 +18,12 @@ class WhaleBot:
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # $1M+ buys
         self.stop_loss_pct = 0.05  # 5% for quick exits
-        self.min_notional = 5.0   # Trade size $5 for low balance
+        self.min_notional = 3.0   # Trade size $3 for low balance
         self.max_market_cap = 500000000  # Max $500M market cap
         self.performance_threshold = 0.05  # Hold if >5% gain in 24h
         self.sell_threshold = 0.0  # Sell if <0% (dropping)
-        self.excluded_coins = ['BTC', 'ETH', 'BNB']  # Exclude high-cap coins
-        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W']  # Meme coins
+        self.excluded_coins = ['BTC', 'ETH', 'BNB', 'USDC', 'SOL', 'DOGE', 'ADA']  # Exclude high-cap coins
+        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC']  # Meme and low-cap coins
 
     def get_server_time(self):
         try:
@@ -57,7 +57,7 @@ class WhaleBot:
                         if price > 0:
                             portfolio_value += float(b['free']) * price
                         asset_balances[b['asset']] = float(b['free'])
-                # Sell BTC, ETH, BNB immediately
+                # Sell excluded coins immediately
                 for asset in self.excluded_coins:
                     if asset in asset_balances and asset_balances[asset] >= 0.0001:
                         usdt_received = self.convert_to_usdt(asset, asset_balances[asset])
@@ -116,6 +116,8 @@ class WhaleBot:
 
     def is_low_market_cap(self, coin_id):
         try:
+            if coin_id in self.priority_coins:
+                return True  # Skip market cap check for priority coins
             url = COINGECKO_COIN_URL % coin_id
             response = requests.get(url)
             if response.status_code == 200:
@@ -189,7 +191,7 @@ class WhaleBot:
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(self.get_server_time())
             precision = self.get_symbol_precision(symbol)
-            rounded_amount = round(amount - (amount % 0.0001), precision)
+            rounded_amount = round(amount, precision)
             if rounded_amount < 0.0001:
                 print(f"Rounded amount {rounded_amount} {asset} too small for conversion")
                 return 0
