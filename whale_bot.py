@@ -170,7 +170,7 @@ class WhaleBot:
             url = CMC_API_URL
             params = {'symbol': cmc_symbol, 'CMC_PRO_API_KEY': CMC_API_KEY}
             response = requests.get(url, params=params)
-            time.sleep(3)  # Increased to avoid rate limit
+            time.sleep(5)  # Increased to avoid rate limit
             if response.status_code == 200:
                 data = response.json()
                 market_cap = data.get('data', {}).get(cmc_symbol, {}).get('quote', {}).get('USD', {}).get('market_cap', 0)
