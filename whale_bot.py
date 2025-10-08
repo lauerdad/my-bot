@@ -16,9 +16,8 @@ class WhaleBot:
         self.portfolio = 334.83  # Initial balance 34.83
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # M+ buys
-        self.stop_loss_pct = 0.10  # 10%
-        self.min_notional = 50.0  # Trade size 0 for higher returns
-        self.safe_coins = ['ETH', 'SOL', 'BTC', 'BNB', 'ADA', 'XRP', 'DOGE', 'LTC', 'LINK', 'UNI', 'AVAX', 'NEAR', 'APT']  # Expanded safe coins
+        self.stop_loss_pct = 0.05  # Reduced to 5% for more upside
+        self.min_notional = 100.0  # Increased trade size 00 for bigger gains
 
     def get_account_balance(self):
         try:
@@ -60,23 +59,6 @@ class WhaleBot:
             return 0
         except Exception:
             return 0
-
-    def get_symbol_precision(self, symbol):
-        try:
-            url = 'https://api.binance.us/api/v3/exchangeInfo'
-            params = {'symbol': symbol}
-            response = requests.get(url, params=params)
-            if response.status_code == 200:
-                symbol_info = response.json()['symbols'][0]
-                for f in symbol_info['filters']:
-                    if f['filterType'] == 'LOT_SIZE':
-                        step_size = float(f['stepSize'])
-                        precision = int(-math.log10(step_size))
-                        return precision
-            return 6  # Default precision
-        except Exception as e:
-            print(f"Symbol precision error for {symbol}: {e}")
-            return 6
 
     def get_open_orders(self):
         try:
@@ -132,8 +114,8 @@ class WhaleBot:
             symbol = f"{asset}USDT"
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
-            precision = self.get_symbol_precision(symbol)
-            rounded_amount = round(amount - (amount % 0.0001), precision)
+            precision = 6 if asset == 'ETH' else 2  # ETH: 6 decimals, SOL/AIOZ: 2 decimals
+            rounded_amount = round(amount - (amount % 0.0001), precision)  # Align to step size 0.0001
             if rounded_amount < 0.0001:
                 print(f"Rounded amount {rounded_amount} {asset} too small for conversion")
                 return 0
