@@ -344,7 +344,11 @@ class WhaleBot:
                 print(f"Binance: Bought {quantity} {symbol} at {price}, stop loss at {price * (1 - self.stop_loss_pct)}")
                 with open(self.trades_log, 'a') as f:
                     f.write(f"{datetime.now()}: Binance Bought {quantity} {symbol} at {price}\n")
-                self.place_stop_loss_order(symbol, quantity, return False
+                self.place_stop_loss_order(symbol, quantity, price * (1 - self.stop_loss_pct))
+                return True
+            else:
+                print(f"Binance order failed: {response.status_code} - {response.text}")
+                return False
         except Exception as e:
             print(f"Binance error: {e}")
             return False
