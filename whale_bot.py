@@ -120,6 +120,8 @@ class WhaleBot:
                         step_size = float(f['stepSize'])
                         precision = int(-math.log10(step_size))
                         return precision
+                    if f['filterType'] == 'MIN_NOTIONAL':
+                        self.min_conversion = max(self.min_conversion, float(f['minNotional']))
             return 6  # Default precision
         except Exception as e:
             print(f"Symbol precision error for {symbol}: {e}")
@@ -161,7 +163,7 @@ class WhaleBot:
             url = CMC_API_URL
             params = {'symbol': cmc_symbol, 'CMC_PRO_API_KEY': CMC_API_KEY}
             response = requests.get(url, params=params)
-            time.sleep(1)  # Avoid rate limit
+            time.sleep(2)  # Increased to avoid rate limit
             if response.status_code == 200:
                 data = response.json()
                 market_cap = data.get('data', {}).get(cmc_symbol, {}).get('quote', {}).get('USD', {}).get('market_cap', 0)
