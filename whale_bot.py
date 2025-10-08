@@ -12,7 +12,7 @@ COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/ticker
 
 class WhaleBot:
     def __init__(self):
-        self.portfolio = 345.82  # Updated balance 45.82
+        self.portfolio = 348.00  # Updated balance 48.00
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # M+ buys
         self.stop_loss_pct = 0.10  # 10%
@@ -30,13 +30,42 @@ class WhaleBot:
             if response.status_code == 200:
                 balances = response.json()['balances']
                 usdt_balance = float(next((b['free'] for b in balances if b['asset'] == 'USDT'), 0))
-                print(f"Available USDT balance: {usdt_balance}")
-                return usdt_balance
+                eth_balance = float(next((b['free'] for b in balances if b['asset'] == 'ETH'), 0))
+                print(f"Available USDT balance: {usdt_balance}, ETH balance: {eth_balance}")
+                return usdt_balance, eth_balance
             else:
                 print(f"Balance check failed: {response.text}")
-                return 0
+                return 0, 0
         except Exception as e:
             print(f"Balance check error: {e}")
+            return 0, 0
+
+    def convert_eth_to_usdt(self, eth_amount):
+        try:
+            url = 'https://api.binance.us/api/v3/order'
+            timestamp = str(int(time.time() * 1000))
+            params = {
+                'symbol': 'ETHUSDT',
+                'side': 'SELL',
+                'type': 'MARKET',
+                'quantity': eth_amount,
+                'timestamp': timestamp
+            }
+            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+            signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
+            params['signature'] = signature
+            headers = {'X-MBX-APIKEY': BINANCE_API_KEY}
+            response = requests.post(url, headers=headers, params=params)
+            if response.status_code == 200:
+                order = response.json()
+                usdt_received = float(order['cummulativeQuoteQty'])
+                print(f"Converted {eth_amount} ETH to {usdt_received} USDT")
+                return usdt_received
+            else:
+                print(f"ETH to USDT conversion failed: {response.text}")
+                return 0
+        except Exception as e:
+            print(f"Conversion error: {e}")
             return 0
 
     def get_whale_buys(self):
@@ -57,8 +86,14 @@ class WhaleBot:
 
     def place_binance_buy_order(self, symbol, amount_usd):
         try:
-            # Check balance before placing order
-            usdt_balance = self.get_account_balance()
+            # Check balance and convert ETH to USDT if needed
+            usdt_balance, eth_balance = self.get_account_balance()
+            if usdt_balance < amount_usd and eth_balance > 0:
+                eth_to_sell = min(eth_balance, 0.1)  # Sell up to 0.1 ETH
+                usdt_received = self.convert_eth_to_usdt(eth_to_sell)
+                if usdt_received == 0:
+                    return False
+                usdt_balance += usdt_received
             if usdt_balance < amount_usd:
                 print(f"Insufficient USDT balance: {usdt_balance} < {amount_usd}")
                 return False
@@ -93,7 +128,7 @@ class WhaleBot:
 
     def main(self):
         print("Auto-Trading Bot Started - Buying Altseason Winners...")
-        allocations = {'ETHUSDT': 138.33, 'SOLUSDT': 103.74, 'AIOZUSDT': 103.75}  # 45.82 split
+        allocations = {'ETHUSDT': 138.33, 'SOLUSDT': 103.74, 'AIOZUSDT': 103.75}  # 48.00 split
         last_tx = {}
         while True:
             for symbol, amount in allocations.items():
