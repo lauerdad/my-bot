@@ -12,10 +12,11 @@ COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/ticker
 
 class WhaleBot:
     def __init__(self):
-        self.portfolio = 334.83  # Updated balance 34.83
+        self.portfolio = 334.83  # Initial balance 34.83
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # M+ buys
         self.stop_loss_pct = 0.10  # 10%
+        self.min_notional = 10.0  # Minimum trade size
 
     def get_account_balance(self):
         try:
@@ -33,14 +34,39 @@ class WhaleBot:
                 eth_balance = float(next((b['free'] for b in balances if b['asset'] == 'ETH'), 0))
                 sol_balance = float(next((b['free'] for b in balances if b['asset'] == 'SOL'), 0))
                 aioz_balance = float(next((b['free'] for b in balances if b['asset'] == 'AIOZ'), 0))
-                print(f"Available USDT balance: {usdt_balance}, ETH balance: {eth_balance}, SOL balance: {sol_balance}, AIOZ balance: {aioz_balance}")
-                return usdt_balance, eth_balance, sol_balance, aioz_balance
+                # Estimate portfolio value
+                portfolio_value = usdt_balance
+                if eth_balance > 0:
+                    eth_price = self.get_current_price('ETHUSDT')
+                    portfolio_value += eth_balance * eth_price
+                if sol_balance > 0:
+                    sol_price = self.get_current_price('SOLUSDT')
+                    portfolio_value += sol_balance * sol_price
+                if aioz_balance > 0:
+                    aioz_price = self.get_current_price('AIOZUSDT')
+                    portfolio_value += aioz_balance * aioz_price
+                print(f"Available USDT balance: {usdt_balance}, ETH balance: {eth_balance}, SOL balance: {sol_balance}, AIOZ balance: {aioz_balance}, Portfolio value: ")
+                return usdt_balance, eth_balance, sol_balance, aioz_balance, portfolio_value
             else:
                 print(f"Balance check failed: {response.text}")
-                return 0, 0, 0, 0
+                return 0, 0, 0, 0, 0
         except Exception as e:
             print(f"Balance check error: {e}")
-            return 0, 0, 0, 0
+            return 0, 0, 0, 0, 0
+
+    def get_current_price(self, symbol):
+        try:
+            url = 'https://api.binance.us/api/v3/ticker/price'
+            params = {'symbol': symbol}
+            response = requests.get(url, params=params)
+            if response.status_code == 200:
+                return float(response.json()['price'])
+            else:
+                print(f"Price fetch failed for {symbol}: {response.text}")
+                return 0
+        except Exception as e:
+            print(f"Price fetch error: {e}")
+            return 0
 
     def cancel_open_orders(self, symbol):
         try:
@@ -148,19 +174,10 @@ class WhaleBot:
 
     def place_binance_buy_order(self, symbol, amount_usd):
         try:
-            # Check balance and convert all available assets to USDT
-            usdt_balance, eth_balance, sol_balance, aioz_balance = self.get_account_balance()
-            if usdt_balance < amount_usd:
-                for asset, balance in [('ETH', eth_balance), ('SOL', sol_balance), ('AIOZ', aioz_balance)]:
-                    if balance >= 0.0001:  # Minimum lot size
-                        amount_to_sell = round(balance, 6 if asset == 'ETH' else 2)  # Round to correct precision
-                        usdt_received = self.convert_to_usdt(asset, amount_to_sell)
-                        if usdt_received > 0:
-                            usdt_balance += usdt_received
-                        if usdt_balance >= amount_usd:
-                            break
-            if usdt_balance < amount_usd:
-                print(f"Insufficient USDT balance: {usdt_balance} < {amount_usd}")
+            # Check balance
+            usdt_balance, eth_balance, sol_balance, aioz_balance, portfolio_value = self.get_account_balance()
+            if usdt_balance < self.min_notional:
+                print(f"Insufficient USDT balance: {usdt_balance} < {self.min_notional}. Stopping trades.")
                 return False
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
@@ -195,12 +212,16 @@ class WhaleBot:
 
     def main(self):
         print("Auto-Trading Bot Started - Buying Altseason Winners...")
-        allocations = {'ETHUSDT': 10.00, 'SOLUSDT': 10.00, 'AIOZUSDT': 0.0}  # 0 minimum notional
+        allocations = {'ETHUSDT': 10.00, 'SOLUSDT': 10.00, 'AIOZUSDT': 10.00}  # 0 minimum notional
         last_tx = {}
         while True:
+            usdt_balance, _, _, _, portfolio_value = self.get_account_balance()
+            if usdt_balance < self.min_notional:
+                print(f"USDT balance {usdt_balance} below minimum notional {self.min_notional}. Stopping bot.")
+                break
             for symbol, amount in allocations.items():
                 if amount == 0:
-                    continue  # Skip AIOZ if no allocation
+                    continue  # Skip if no allocation
                 currency = symbol.split('USDT')[0].lower()
                 buys = self.get_whale_buys()
                 for tx in buys:
