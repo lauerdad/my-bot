@@ -20,7 +20,7 @@ class WhaleBot:
         self.whale_threshold = 1000000  # $1M+ buys
         self.stop_loss_pct = 0.05  # 5% for quick exits
         self.min_notional = 10.0  # Trade size $10 to meet Binance US minimum
-        self.min_conversion = 2.0  # Minimum $2 for conversions
+        self.min_conversion = 0.10  # Minimum $0.10 for conversions
         self.max_market_cap = 1000000000  # Max $1B market cap
         self.performance_threshold = 0.05  # Hold if >5% gain in 24h
         self.sell_threshold = 0.0  # Sell if <0% (dropping)
@@ -29,6 +29,7 @@ class WhaleBot:
         self.market_cap_cache = {}  # Cache for market cap data
         self.cache_expiry = 3600  # Cache for 1 hour
         self.valid_pairs = []  # Cache for valid trading pairs
+        self.min_notional_cache = {}  # Cache for pair-specific minimum notional
 
     def get_server_time(self):
         try:
@@ -82,7 +83,8 @@ class WhaleBot:
                 for asset in self.excluded_coins:
                     if asset in asset_balances and asset_balances[asset] >= 0.000001:
                         price = self.get_current_price(f"{asset}USDT")
-                        if price * asset_balances[asset] >= self.min_conversion:  # Ensure minimum conversion value
+                        min_notional = self.get_symbol_precision(f"{asset}USDT")[1]
+                        if price * asset_balances[asset] >= min_notional:
                             usdt_received = self.convert_to_usdt(asset, asset_balances[asset])
                             if usdt_received > 0:
                                 usdt_balance += usdt_received
@@ -110,22 +112,27 @@ class WhaleBot:
 
     def get_symbol_precision(self, symbol):
         try:
+            if symbol in self.min_notional_cache:
+                return self.min_notional_cache[symbol]['precision'], self.min_notional_cache[symbol]['min_notional']
             url = 'https://api.binance.us/api/v3/exchangeInfo'
             params = {'symbol': symbol}
             response = requests.get(url, params=params)
             if response.status_code == 200:
                 symbol_info = response.json()['symbols'][0]
+                precision = 6  # Default precision
+                min_notional = self.min_conversion  # Default minimum
                 for f in symbol_info['filters']:
                     if f['filterType'] == 'LOT_SIZE':
                         step_size = float(f['stepSize'])
                         precision = int(-math.log10(step_size))
-                        return precision
                     if f['filterType'] == 'MIN_NOTIONAL':
-                        self.min_conversion = max(self.min_conversion, float(f['minNotional']))
-            return 6  # Default precision
+                        min_notional = float(f['minNotional'])
+                self.min_notional_cache[symbol] = {'precision': precision, 'min_notional': min_notional}
+                return precision, min_notional
+            return 6, self.min_conversion
         except Exception as e:
             print(f"Symbol precision error for {symbol}: {e}")
-            return 6
+            return 6, self.min_conversion
 
     def get_price_change(self, symbol):
         try:
@@ -163,7 +170,7 @@ class WhaleBot:
             url = CMC_API_URL
             params = {'symbol': cmc_symbol, 'CMC_PRO_API_KEY': CMC_API_KEY}
             response = requests.get(url, params=params)
-            time.sleep(2)  # Increased to avoid rate limit
+            time.sleep(3)  # Increased to avoid rate limit
             if response.status_code == 200:
                 data = response.json()
                 market_cap = data.get('data', {}).get(cmc_symbol, {}).get('quote', {}).get('USD', {}).get('market_cap', 0)
@@ -238,14 +245,14 @@ class WhaleBot:
                 return 0
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(self.get_server_time())
-            precision = self.get_symbol_precision(symbol)
+            precision, min_notional = self.get_symbol_precision(symbol)
             rounded_amount = round(amount, precision)
             if rounded_amount < 0.000001:
                 print(f"Rounded amount {rounded_amount} {asset} too small for conversion")
                 return 0
             price = self.get_current_price(symbol)
-            if price * rounded_amount < self.min_conversion:
-                print(f"Value {price * rounded_amount} USDT for {rounded_amount} {asset} below minimum ${self.min_conversion}. Skipping.")
+            if price * rounded_amount < min_notional:
+                print(f"Value {price * rounded_amount} USDT for {rounded_amount} {asset} below minimum ${min_notional}. Skipping.")
                 return 0
             params = {
                 'symbol': symbol,
@@ -314,7 +321,7 @@ class WhaleBot:
             self.cancel_open_orders(symbol)
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(self.get_server_time())
-            precision = self.get_symbol_precision(symbol)
+            precision, _ = self.get_symbol_precision(symbol)
             params = {
                 'symbol': symbol,
                 'side': 'SELL',
