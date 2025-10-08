@@ -11,7 +11,7 @@ BINANCE_API_KEY = 'ICsKLW8ArFzRJSPHG5ebvk0BCzsXq9nROsctaq3zsG4niOxhoycoMQZPnuCnB
 BINANCE_SECRET = 'apMeuoC9VSYmUE80m5zkFKjUmLvqDlzBfiDKE2VbJ9wJVx7PbzooNI26TMfK6TJB'
 COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/tickers?include_exchange_logo=false&precision=2'
 CMC_API_URL = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/info'
-CMC_API_KEY = '06b8fe2f-9630-4f99-b6f1-0f5f2bc4894e'  # Your CoinMarketCap API key
+CMC_API_KEY = '06b8fe2f-9630-4f99-b6f1-0f5f2bc4894e'
 
 class WhaleBot:
     def __init__(self):
@@ -24,7 +24,9 @@ class WhaleBot:
         self.performance_threshold = 0.05  # Hold if >5% gain in 24h
         self.sell_threshold = 0.0  # Sell if <0% (dropping)
         self.excluded_coins = ['BTC', 'ETH', 'BNB', 'USDC', 'SOL', 'DOGE', 'ADA']  # Exclude high-cap coins
-        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA', 'FOUR', 'AVANTIS', 'AVNT', 'HEMI', 'OPEN', 'MIRA', 'S', 'TUT', 'NEIRO']  # Expanded priority coins
+        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA', 'FOUR', 'AVANTIS', 'AVNT', 'HEMI', 'OPEN', 'MIRA', 'S', 'TUT', 'NEIRO', 'AAVE', 'ONDO', 'HBAR', 'CRV', 'WLFI', 'ARB', 'OP', 'LDO', 'TWT', 'XLM', 'WBTC', 'BCH', 'PEPE', 'SEI', 'BONK', 'PLUME', 'SOMI', 'TAO', 'LINEA']  # Expanded priority coins
+        self.market_cap_cache = {}  # Cache for market cap data
+        self.cache_expiry = 3600  # Cache for 1 hour
 
     def get_server_time(self):
         try:
@@ -121,12 +123,30 @@ class WhaleBot:
         try:
             if coin_id in self.priority_coins:
                 return True  # Skip market cap check for priority coins
+            # Check cache first
+            if coin_id in self.market_cap_cache and time.time() - self.market_cap_cache[coin_id]['timestamp'] < self.cache_expiry:
+                market_cap = self.market_cap_cache[coin_id]['market_cap']
+                if market_cap == 0:
+                    print(f"No market cap data for {coin_id} (cached). Skipping as potential risk.")
+                    return False
+                if market_cap > self.max_market_cap:
+                    print(f"{coin_id} market cap ${market_cap:,} exceeds ${self.max_market_cap:,} (cached). Skipping.")
+                    return False
+                return True
+            # Map ticker to CoinMarketCap symbol if needed
+            symbol_map = {
+                'XPL': 'XPLA', 'USDE': 'ETHENA-USDE', 'FORM': 'FORMATION-FI', 'CAKE': 'PANCAKESWAP', 'SUI': 'SUI', 'PUMP': 'PUMP-FUN',
+                'BROCCOLI714': 'BROCCOLI', 'BEAMX': 'BEAM', 'USD1': 'WORLD-LIBERTY-FINANCIAL', 'MUBARAK': 'MUBARAK', 'XUSD': 'XUSD'
+            }
+            cmc_symbol = symbol_map.get(coin_id, coin_id)
             url = CMC_API_URL
-            params = {'symbol': coin_id, 'CMC_PRO_API_KEY': CMC_API_KEY}
+            params = {'symbol': cmc_symbol, 'CMC_PRO_API_KEY': CMC_API_KEY}
             response = requests.get(url, params=params)
+            time.sleep(1)  # Avoid rate limit
             if response.status_code == 200:
                 data = response.json()
-                market_cap = data.get('data', {}).get(coin_id, {}).get('quote', {}).get('USD', {}).get('market_cap', 0)
+                market_cap = data.get('data', {}).get(cmc_symbol, {}).get('quote', {}).get('USD', {}).get('market_cap', 0)
+                self.market_cap_cache[coin_id] = {'market_cap': market_cap, 'timestamp': time.time()}
                 if market_cap == 0:
                     print(f"No market cap data for {coin_id}. Skipping as potential risk.")
                     return False
