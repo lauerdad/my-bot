@@ -4,12 +4,12 @@ from datetime import datetime
 import json
 import hmac
 import hashlib
+import math
 
 # Binance US API keys
 BINANCE_API_KEY = 'ICsKLW8ArFzRJSPHG5ebvk0BCzsXq9nROsctaq3zsG4niOxhoycoMQZPnuCnBums'
 BINANCE_SECRET = 'apMeuoC9VSYmUE80m5zkFKjUmLvqDlzBfiDKE2VbJ9wJVx7PbzooNI26TMfK6TJB'
 COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/tickers?include_exchange_logo=false&precision=2'
-COINGECKO_COIN_URL = 'https://api.coingecko.com/api/v3/coins/%s'
 
 class WhaleBot:
     def __init__(self):
@@ -17,8 +17,8 @@ class WhaleBot:
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # M+ buys
         self.stop_loss_pct = 0.10  # 10%
-        self.min_notional = 10.0  # Minimum trade size
-        self.min_coin_age_days = 365  # Avoid rug pulls: only coins >1 year old
+        self.min_notional = 50.0  # Trade size 0 for higher returns
+        self.safe_coins = ['ETH', 'SOL', 'BTC', 'BNB', 'ADA', 'XRP', 'DOGE', 'LTC', 'LINK', 'UNI', 'AVAX', 'NEAR', 'APT']  # Expanded safe coins
 
     def get_account_balance(self):
         try:
@@ -61,27 +61,22 @@ class WhaleBot:
         except Exception:
             return 0
 
-    def is_coin_safe(self, coin_id):
+    def get_symbol_precision(self, symbol):
         try:
-            url = COINGECKO_COIN_URL % coin_id
-            response = requests.get(url)
+            url = 'https://api.binance.us/api/v3/exchangeInfo'
+            params = {'symbol': symbol}
+            response = requests.get(url, params=params)
             if response.status_code == 200:
-                data = response.json()
-                genesis_date = data.get('genesis_date')
-                if not genesis_date:
-                    print(f"No genesis date for {coin_id}. Skipping as potential rug pull.")
-                    return False
-                genesis = datetime.strptime(genesis_date, '%Y-%m-%d')
-                age_days = (datetime.now() - genesis).days
-                if age_days < self.min_coin_age_days:
-                    print(f"{coin_id} is only {age_days} days old, less than {self.min_coin_age_days}. Skipping as potential rug pull.")
-                    return False
-                return True
-            print(f"Failed to fetch coin data for {coin_id}: {response.text}")
-            return False
+                symbol_info = response.json()['symbols'][0]
+                for f in symbol_info['filters']:
+                    if f['filterType'] == 'LOT_SIZE':
+                        step_size = float(f['stepSize'])
+                        precision = int(-math.log10(step_size))
+                        return precision
+            return 6  # Default precision
         except Exception as e:
-            print(f"Coin age check error for {coin_id}: {e}")
-            return False
+            print(f"Symbol precision error for {symbol}: {e}")
+            return 6
 
     def get_open_orders(self):
         try:
@@ -107,7 +102,7 @@ class WhaleBot:
     def cancel_open_orders(self, symbol):
         try:
             orders = self.get_open_orders()
-            if len(orders) >= 8:  # Cancel if 8 or more total orders
+            if len(orders) >= 8:
                 url = 'https://api.binance.us/api/v3/openOrders'
                 timestamp = str(int(time.time() * 1000))
                 params = {'symbol': symbol, 'timestamp': timestamp}
@@ -131,13 +126,13 @@ class WhaleBot:
 
     def convert_to_usdt(self, asset, amount):
         try:
-            if amount < 0.0001:  # Minimum lot size check
+            if amount < 0.0001:
                 print(f"Amount {amount} {asset} too small for conversion")
                 return 0
             symbol = f"{asset}USDT"
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
-            precision = 6 if asset == 'ETH' else 2  # Default precision
+            precision = self.get_symbol_precision(symbol)
             rounded_amount = round(amount - (amount % 0.0001), precision)
             if rounded_amount < 0.0001:
                 print(f"Rounded amount {rounded_amount} {asset} too small for conversion")
@@ -174,8 +169,7 @@ class WhaleBot:
             buys = []
             for ticker in data['tickers']:
                 if ticker['converted_volume']['usd'] > self.whale_threshold and ticker['target'] == 'USDT':
-                    coin_id = ticker['coin_id']
-                    if self.is_coin_safe(coin_id):
+                    if ticker['base'] in self.safe_coins:
                         buys.append(ticker)
                         print(f"Whale buy detected: {ticker['converted_volume']['usd']} USD in {ticker['base']} against {ticker['target']}")
             return buys
@@ -188,7 +182,7 @@ class WhaleBot:
             self.cancel_open_orders(symbol)
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
-            precision = 6 if 'ETH' in symbol else 2  # Default precision
+            precision = self.get_symbol_precision(symbol)
             params = {
                 'symbol': symbol,
                 'side': 'SELL',
