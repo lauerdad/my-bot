@@ -33,12 +33,17 @@ class WhaleBot:
 
     def place_bitsgap_buy_order(self, symbol, amount_usd):
         try:
-            url = 'https://api.bitsgap.com/private/v2/trading/orders'
-            headers = {'Authorization': f'Bearer {BITSGAP_API_KEY}'}
+            url = 'https://api.bitsgap.com/private/v1/orders'
+            headers = {
+                'Authorization': f'Bearer {BITSGAP_API_KEY}',
+                'X-API-KEY': BITSGAP_API_KEY,
+                'X-API-SECRET': BITSGAP_SECRET
+            }
             payload = {
-                'market': symbol,  # e.g., ETH/USDT
+                'symbol': symbol,  # e.g., ETHUSDT
                 'amount': amount_usd,
                 'side': 'buy',
+                'type': 'market',
                 'stop_loss': 0.9  # 10% stop loss
             }
             response = requests.post(url, headers=headers, json=payload)
@@ -58,11 +63,11 @@ class WhaleBot:
 
     def main(self):
         print("Auto-Trading Bot Started - Buying Altseason Winners...")
-        allocations = {'ETH/USDT': 138.33, 'SOL/USDT': 103.74, 'AIOZ/USDT': 103.75}  # 45.82 split
+        allocations = {'ETHUSDT': 138.33, 'SOLUSDT': 103.74, 'AIOZUSDT': 103.75}  # 45.82 split
         last_tx = {}
         while True:
             for symbol, amount in allocations.items():
-                currency = symbol.split('/')[0].lower()
+                currency = symbol.split('USDT')[0].lower()
                 buys = self.get_whale_buys()
                 for tx in buys:
                     unique_id = f"{tx['market']['identifier']}_{tx['timestamp']}"
