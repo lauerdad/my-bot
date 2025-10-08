@@ -12,7 +12,7 @@ COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/ticker
 
 class WhaleBot:
     def __init__(self):
-        self.portfolio = 9.00  # Updated balance ~ USDT
+        self.portfolio = 334.83  # Updated balance 34.83 USDT
         self.trades_log = 'trades.log'
         self.whale_threshold = 1000000  # M+ buys
         self.stop_loss_pct = 0.10  # 10%
@@ -97,17 +97,8 @@ class WhaleBot:
 
     def place_binance_buy_order(self, symbol, amount_usd):
         try:
-            # Check balance and convert all available assets to USDT if needed
+            # Check balance
             usdt_balance, eth_balance, sol_balance, aioz_balance = self.get_account_balance()
-            if usdt_balance < amount_usd:
-                for asset, balance in [('ETH', eth_balance), ('SOL', sol_balance), ('AIOZ', aioz_balance)]:
-                    if balance >= 0.0001:  # Minimum lot size
-                        amount_to_sell = balance  # Sell all available
-                        usdt_received = self.convert_to_usdt(asset, amount_to_sell)
-                        if usdt_received > 0:
-                            usdt_balance += usdt_received
-                        if usdt_balance >= amount_usd:
-                            break
             if usdt_balance < amount_usd:
                 print(f"Insufficient USDT balance: {usdt_balance} < {amount_usd}")
                 return False
@@ -142,7 +133,7 @@ class WhaleBot:
 
     def main(self):
         print("Auto-Trading Bot Started - Buying Altseason Winners...")
-        allocations = {'ETHUSDT': 0.50, 'SOLUSDT': 0.50, 'AIOZUSDT': 0.0}  # Adjusted to /usr/bin/bash.50 USDT
+        allocations = {'ETHUSDT': 10.00, 'SOLUSDT': 10.00, 'AIOZUSDT': 0.0}  # 0 minimum notional
         last_tx = {}
         while True:
             for symbol, amount in allocations.items():
@@ -154,7 +145,7 @@ class WhaleBot:
                     unique_id = f"{tx['market']['identifier']}_{tx['timestamp']}"
                     if tx['base'].lower() == currency and unique_id not in last_tx.get(currency, []):
                         print(f"Whale buy detected: {tx['converted_volume']['usd']} USD in {currency}")
-                        self.place_binance_buy_order(symbol, amount)  # Use full allocated amount
+                        self.place_binance_buy_order(symbol, amount)  # Use minimum notional amount
                         last_tx.setdefault(currency, []).append(unique_id)
                         if len(last_tx[currency]) > 10:
                             last_tx[currency].pop(0)
