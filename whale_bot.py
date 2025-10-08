@@ -5,9 +5,9 @@ import json
 import hmac
 import hashlib
 
-# API keys
-BITSGAP_API_KEY = 'ICsKLW8ArFzRJSPHG5ebvk0BCzsXq9nROsctaq3zsG4niOxhoycoMQZPnuCnBums'
-BITSGAP_SECRET = 'apMeuoC9VSYmUE80m5zkFKjUmLvqDlzBfiDKE2VbJ9wJVx7PbzooNI26TMfK6TJB'
+# Binance US API keys
+BINANCE_API_KEY = 'ICsKLW8ArFzRJSPHG5ebvk0BCzsXq9nROsctaq3zsG4niOxhoycoMQZPnuCnBums'
+BINANCE_SECRET = 'apMeuoC9VSYmUE80m5zkFKjUmLvqDlzBfiDKE2VbJ9wJVx7PbzooNI26TMfK6TJB'
 COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/tickers?coin_ids=ethereum&include_exchange_logo=false&precision=2'
 
 class WhaleBot:
@@ -33,38 +33,35 @@ class WhaleBot:
             print(f"Error fetching whale data: {e}")
             return []
 
-    def place_bitsgap_buy_order(self, symbol, amount_usd):
+    def place_binance_buy_order(self, symbol, amount_usd):
         try:
-            url = 'https://api.bitsgap.com/private/v1/trading/orders'
+            url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
-            payload = {
-                'exchange': 'binanceus',
+            params = {
                 'symbol': symbol,  # e.g., ETHUSDT
-                'amount': amount_usd,
-                'side': 'buy',
-                'type': 'market',
-                'stop_loss': 0.9  # 10% stop loss
+                'side': 'BUY',
+                'type': 'MARKET',
+                'quoteOrderQty': amount_usd,  # Amount in USD
+                'timestamp': timestamp
             }
-            query_string = json.dumps(payload, separators=(',', ':'))
-            signature = hmac.new(BITSGAP_SECRET.encode(), (timestamp + query_string).encode(), hashlib.sha256).hexdigest()
-            headers = {
-                'X-API-KEY': BITSGAP_API_KEY,
-                'X-API-TIMESTAMP': timestamp,
-                'X-API-SIGNATURE': signature
-            }
-            response = requests.post(url, headers=headers, json=payload)
+            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+            signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
+            params['signature'] = signature
+            headers = {'X-MBX-APIKEY': BINANCE_API_KEY}
+            response = requests.post(url, headers=headers, params=params)
             if response.status_code == 200:
-                price = response.json()['price']
-                quantity = amount_usd / price
-                print(f"Bitsgap: Bought {quantity} {symbol} at {price}, stop loss at {price * 0.9}")
+                order = response.json()
+                price = float(order['fills'][0]['price'])
+                quantity = float(order['executedQty'])
+                print(f"Binance: Bought {quantity} {symbol} at {price}, stop loss at {price * 0.9}")
                 with open(self.trades_log, 'a') as f:
-                    f.write(f"{datetime.now()}: Bitsgap Bought {quantity} {symbol} at {price}\n")
+                    f.write(f"{datetime.now()}: Binance Bought {quantity} {symbol} at {price}\n")
                 return True
             else:
-                print(f"Bitsgap order failed: {response.status_code} - {response.text}")
+                print(f"Binance order failed: {response.status_code} - {response.text}")
                 return False
         except Exception as e:
-            print(f"Bitsgap error: {e}")
+            print(f"Binance error: {e}")
             return False
 
     def main(self):
@@ -79,7 +76,7 @@ class WhaleBot:
                     unique_id = f"{tx['market']['identifier']}_{tx['timestamp']}"
                     if tx['base'].lower() == currency and unique_id not in last_tx.get(currency, []):
                         print(f"Whale buy detected: {tx['converted_volume']['usd']} USD in {currency}")
-                        self.place_bitsgap_buy_order(symbol, amount * 0.3)  # 30% of allocation
+                        self.place_binance_buy_order(symbol, amount * 0.3)  # 30% of allocation
                         last_tx.setdefault(currency, []).append(unique_id)
                         if len(last_tx[currency]) > 10:
                             last_tx[currency].pop(0)
