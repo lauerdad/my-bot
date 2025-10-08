@@ -2,12 +2,10 @@ import requests
 import time
 from datetime import datetime
 import json
-import hmac
-import hashlib
 
 # API keys
-BITSGAP_API_KEY = 'g00cR11OSMcawNzE6dqQ6YXcK3nmedotIIzdyWebxxnEhmYjJ0NwHMVdgeeG2LLm'
-BITSGAP_SECRET = 'Tq9gWHfuIxbWJDxnB2JvjDaL3PLSzsWMaghxSAzHvvh67nKphrUPp4IAx0YknWk5'
+BITSGAP_API_KEY = 'ICsKLW8ArFzRJSPHG5ebvk0BCzsXq9nROsctaq3zsG4niOxhoycoMQZPnuCnBums'
+BITSGAP_SECRET = 'apMeuoC9VSYmUE80m5zkFKjUmLvqDlzBfiDKE2VbJ9wJVx7PbzooNI26TMfK6TJB'
 COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/tickers?coin_ids=ethereum&include_exchange_logo=false&precision=2'
 
 class WhaleBot:
@@ -36,7 +34,10 @@ class WhaleBot:
     def place_bitsgap_buy_order(self, symbol, amount_usd):
         try:
             url = 'https://api.bitsgap.com/private/v1/order'
-            timestamp = str(int(time.time() * 1000))
+            headers = {
+                'Authorization': f'Bearer {BITSGAP_API_KEY}',
+                'X-API-KEY': BITSGAP_API_KEY
+            }
             payload = {
                 'exchange': 'binanceus',
                 'symbol': symbol,  # e.g., ETHUSDT
@@ -44,13 +45,6 @@ class WhaleBot:
                 'side': 'buy',
                 'type': 'market',
                 'stop_loss': 0.9  # 10% stop loss
-            }
-            query_string = json.dumps(payload, separators=(',', ':'))
-            signature = hmac.new(BITSGAP_SECRET.encode(), (timestamp + query_string).encode(), hashlib.sha256).hexdigest()
-            headers = {
-                'X-API-KEY': BITSGAP_API_KEY,
-                'X-API-TIMESTAMP': timestamp,
-                'X-API-SIGNATURE': signature
             }
             response = requests.post(url, headers=headers, json=payload)
             if response.status_code == 200:
@@ -61,7 +55,7 @@ class WhaleBot:
                     f.write(f"{datetime.now()}: Bitsgap Bought {quantity} {symbol} at {price}\n")
                 return True
             else:
-                print(f"Bitsgap order failed: {response.text}")
+                print(f"Bitsgap order failed: {response.status_code} - {response.text}")
                 return False
         except Exception as e:
             print(f"Bitsgap error: {e}")
