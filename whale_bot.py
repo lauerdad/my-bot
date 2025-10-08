@@ -4,8 +4,8 @@ from datetime import datetime
 import json
 
 # API keys
-BITSGAP_API_KEY = 'ebtoJV5J4z5f7wcNqvtshHJliSTup0K1RPxygeIwMKeODRaI0TPlfRLAp3fbQiJ3'
-BITSGAP_SECRET = '1PW8sineWppQvvK9gemiOUTodipJKvSENCGNkqPiBPUE2CmHLlpdqu4tmmc2k3yM'
+BITSGAP_API_KEY = 'g00cR11OSMcawNzE6dqQ6YXcK3nmedotIIzdyWebxxnEhmYjJ0NwHMVdgeeG2LLm'
+BITSGAP_SECRET = 'Tq9gWHfuIxbWJDxnB2JvjDaL3PLSzsWMaghxSAzHvvh67nKphrUPp4IAx0YknWk5'
 COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/tickers?coin_ids=ethereum&include_exchange_logo=false&precision=2'
 
 class WhaleBot:
