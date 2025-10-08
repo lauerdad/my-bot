@@ -24,7 +24,7 @@ class WhaleBot:
         self.performance_threshold = 0.05  # Hold if >5% gain in 24h
         self.sell_threshold = 0.0  # Sell if <0% (dropping)
         self.excluded_coins = ['BTC', 'ETH', 'BNB', 'USDC', 'SOL', 'DOGE', 'ADA']  # Exclude high-cap coins
-        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA', 'FOUR', 'AVANTIS', 'AVNT', 'HEMI', 'OPEN', 'MIRA', 'S', 'TUT', 'NEIRO', 'AAVE', 'ONDO', 'HBAR', 'CRV', 'WLFI', 'ARB', 'OP', 'LDO', 'TWT', 'XLM', 'WBTC', 'BCH', 'PEPE', 'SEI', 'BONK', 'PLUME', 'SOMI', 'TAO', 'LINEA', 'XPLA', 'SUI', 'PUMP']  # Expanded priority coins
+        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA', 'FOUR', 'AVANTIS', 'AVNT', 'HEMI', 'OPEN', 'MIRA', 'S', 'TUT', 'NEIRO', 'AAVE', 'ONDO', 'HBAR', 'CRV', 'WLFI', 'ARB', 'OP', 'LDO', 'TWT', 'XLM', 'WBTC', 'BCH', 'PEPE', 'SEI', 'BONK', 'PLUME', 'SOMI', 'TAO', 'LINEA', 'XPLA', 'SUI', 'PUMP', 'FDUSD', 'API3', 'ORDI', 'PENDLE', 'THE', 'WLD']  # Expanded priority coins
         self.market_cap_cache = {}  # Cache for market cap data
         self.cache_expiry = 3600  # Cache for 1 hour
 
@@ -136,7 +136,8 @@ class WhaleBot:
             # Map ticker to CoinMarketCap symbol
             symbol_map = {
                 'XPL': 'XPLA', 'USDE': 'ETHA', 'FORM': 'FORM', 'CAKE': 'CAKE', 'SUI': 'SUI', 'PUMP': 'PUMP',
-                'BROCCOLI714': 'BROCCOLI', 'BEAMX': 'BEAM', 'USD1': 'WLFI', 'MUBARAK': 'MUBARAK', 'XUSD': 'XUSD'
+                'BROCCOLI714': 'BROCCOLI', 'BEAMX': 'BEAM', 'USD1': 'WLFI', 'MUBARAK': 'MUBARAK', 'XUSD': 'XUSD',
+                'FDUSD': 'FDUSD', 'API3': 'API3', 'ORDI': 'ORDI', 'PENDLE': 'PENDLE', 'THE': 'THE', 'WLD': 'WLD'
             }
             cmc_symbol = symbol_map.get(coin_id, coin_id)
             url = CMC_API_URL
@@ -190,18 +191,15 @@ class WhaleBot:
                 params = {'symbol': symbol, 'timestamp': timestamp, 'recvWindow': 10000}
                 query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
                 signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
-                params['signature'] = signature
-                headers = {'X-MBX-APIKEY': BINANCE_API_KEY}
-                response = requests.delete(url, headers=headers, params=params)
-                if response.status_code == 200:
-                    print(f"Canceled open orders for {symbol}")
-                    return True
-                else:
-                    print(f"Failed to cancel orders for {symbol}: {response.status_code} - {response.text}")
-                    return False
-            else:
-                print(f"No need to cancel orders for {symbol}: {len(orders)} open orders, below limit of 8")
+            params['signature'] = signature
+            headers = {'X-MBX-APIKEY': BINANCE_API_KEY}
+            response = requests.delete(url, headers=headers, params=params)
+            if response.status_code == 200:
+                print(f"Canceled open orders for {symbol}")
                 return True
+            else:
+                print(f"Failed to cancel orders for {symbol}: {response.status_code} - {response.text}")
+                return False
         except Exception as e:
             print(f"Cancel orders error: {e}")
             return False
