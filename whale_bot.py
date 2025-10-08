@@ -23,7 +23,7 @@ class WhaleBot:
         self.performance_threshold = 0.05  # Hold if >5% gain in 24h
         self.sell_threshold = 0.0  # Sell if <0% (dropping)
         self.excluded_coins = ['BTC', 'ETH', 'BNB', 'USDC', 'SOL', 'DOGE', 'ADA']  # Exclude high-cap coins
-        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA']  # Expanded priority coins
+        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA', 'FOUR', 'AVANTIS']  # Expanded priority coins
 
     def get_server_time(self):
         try:
@@ -57,14 +57,16 @@ class WhaleBot:
                         if price > 0:
                             portfolio_value += float(b['free']) * price
                         asset_balances[b['asset']] = float(b['free'])
-                # Sell excluded coins immediately
+                # Sell excluded coins immediately if sufficient value
                 for asset in self.excluded_coins:
                     if asset in asset_balances and asset_balances[asset] >= 0.000001:
-                        usdt_received = self.convert_to_usdt(asset, asset_balances[asset])
-                        if usdt_received > 0:
-                            usdt_balance += usdt_received
-                            portfolio_value += usdt_received
-                            asset_balances[asset] = 0.0
+                        price = self.get_current_price(f"{asset}USDT")
+                        if price * asset_balances[asset] >= 10:  # Ensure minimum USDT value
+                            usdt_received = self.convert_to_usdt(asset, asset_balances[asset])
+                            if usdt_received > 0:
+                                usdt_balance += usdt_received
+                                portfolio_value += usdt_received
+                                asset_balances[asset] = 0.0
                 print(f"Available USDT balance: {usdt_balance}, Asset balances: {asset_balances}, Portfolio value: ${portfolio_value:.2f}")
                 return usdt_balance, asset_balances, portfolio_value
             else:
@@ -194,6 +196,10 @@ class WhaleBot:
             rounded_amount = round(amount, precision)
             if rounded_amount < 0.000001:
                 print(f"Rounded amount {rounded_amount} {asset} too small for conversion")
+                return 0
+            price = self.get_current_price(symbol)
+            if price * rounded_amount < 10:  # Ensure minimum USDT value
+                print(f"Value {price * rounded_amount} USDT for {rounded_amount} {asset} below minimum $10. Skipping.")
                 return 0
             params = {
                 'symbol': symbol,
