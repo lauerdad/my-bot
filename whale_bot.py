@@ -23,7 +23,7 @@ class WhaleBot:
         self.performance_threshold = 0.05  # Hold if >5% gain in 24h
         self.sell_threshold = 0.0  # Sell if <0% (dropping)
         self.excluded_coins = ['BTC', 'ETH', 'BNB', 'USDC', 'SOL', 'DOGE', 'ADA']  # Exclude high-cap coins
-        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC']  # Meme and low-cap coins
+        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W', 'XRP', 'APT', 'TRX', 'LINK', 'NEAR', 'DOT', 'UNI', 'LTC', 'ZEC', 'PAXG', 'FLOKI', 'PENGU', 'ETHA']  # Expanded priority coins
 
     def get_server_time(self):
         try:
