@@ -117,7 +117,7 @@ class WhaleBot:
 
     def place_stop_loss_order(self, symbol, quantity, stop_price):
         try:
-            # Cancel existing stop-loss orders to avoid MAX_NUM_ALGO_ORDERS
+            # Cancel existing stop-loss orders
             self.cancel_open_orders(symbol)
             url = 'https://api.binance.us/api/v3/order'
             timestamp = str(int(time.time() * 1000))
@@ -148,8 +148,17 @@ class WhaleBot:
 
     def place_binance_buy_order(self, symbol, amount_usd):
         try:
-            # Check balance
+            # Check balance and convert all available assets to USDT
             usdt_balance, eth_balance, sol_balance, aioz_balance = self.get_account_balance()
+            if usdt_balance < amount_usd:
+                for asset, balance in [('ETH', eth_balance), ('SOL', sol_balance), ('AIOZ', aioz_balance)]:
+                    if balance >= 0.0001:  # Minimum lot size
+                        amount_to_sell = round(balance, 6 if asset == 'ETH' else 2)  # Round to correct precision
+                        usdt_received = self.convert_to_usdt(asset, amount_to_sell)
+                        if usdt_received > 0:
+                            usdt_balance += usdt_received
+                        if usdt_balance >= amount_usd:
+                            break
             if usdt_balance < amount_usd:
                 print(f"Insufficient USDT balance: {usdt_balance} < {amount_usd}")
                 return False
