@@ -10,15 +10,20 @@ import math
 BINANCE_API_KEY = 'ICsKLW8ArFzRJSPHG5ebvk0BCzsXq9nROsctaq3zsG4niOxhoycoMQZPnuCnBums'
 BINANCE_SECRET = 'apMeuoC9VSYmUE80m5zkFKjUmLvqDlzBfiDKE2VbJ9wJVx7PbzooNI26TMfK6TJB'
 COINGECKO_WHALE_URL = 'https://api.coingecko.com/api/v3/exchanges/binance/tickers?include_exchange_logo=false&precision=2'
+COINGECKO_COIN_URL = 'https://api.coingecko.com/api/v3/coins/%s'
 
 class WhaleBot:
     def __init__(self):
-        self.portfolio = 334.83  # Initial balance 34.83
+        self.portfolio = 334.83  # Initial balance $334.83
         self.trades_log = 'trades.log'
-        self.whale_threshold = 1000000  # M+ buys
-        self.stop_loss_pct = 0.05  # 5% for more upside
-        self.min_notional = 30.0  # Trade size 0 for more trades
-        self.safe_coins = ['ETH', 'SOL', 'BTC', 'BNB', 'ADA', 'XRP', 'DOGE', 'LTC', 'LINK', 'UNI', 'AVAX', 'NEAR', 'APT', 'DOT', 'TRX', 'MATIC', 'SHIB']  # Volatile alts
+        self.whale_threshold = 1000000  # $1M+ buys
+        self.stop_loss_pct = 0.05  # 5% for quick exits
+        self.min_notional = 5.0   # Trade size $5 for low balance
+        self.max_market_cap = 500000000  # Max $500M market cap
+        self.performance_threshold = 0.05  # Hold if >5% gain in 24h
+        self.sell_threshold = 0.0  # Sell if <0% (dropping)
+        self.excluded_coins = ['BTC', 'ETH', 'BNB']  # Exclude high-cap coins
+        self.priority_coins = ['FARTCOIN', 'PIPPIN', 'MOBY', 'VINE', 'JELLYJELLY', 'POPCAT', 'PNUT', 'TST', 'CHEEMS', 'W']  # Meme coins
 
     def get_server_time(self):
         try:
@@ -35,7 +40,7 @@ class WhaleBot:
         try:
             url = 'https://api.binance.us/api/v3/account'
             timestamp = str(self.get_server_time())
-            params = {'timestamp': timestamp}
+            params = {'timestamp': timestamp, 'recvWindow': 10000}
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
             signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
             params['signature'] = signature
@@ -52,7 +57,15 @@ class WhaleBot:
                         if price > 0:
                             portfolio_value += float(b['free']) * price
                         asset_balances[b['asset']] = float(b['free'])
-                print(f"Available USDT balance: {usdt_balance}, Asset balances: {asset_balances}, Portfolio value: ")
+                # Sell BTC, ETH, BNB immediately
+                for asset in self.excluded_coins:
+                    if asset in asset_balances and asset_balances[asset] >= 0.0001:
+                        usdt_received = self.convert_to_usdt(asset, asset_balances[asset])
+                        if usdt_received > 0:
+                            usdt_balance += usdt_received
+                            portfolio_value += usdt_received
+                            asset_balances[asset] = 0.0
+                print(f"Available USDT balance: {usdt_balance}, Asset balances: {asset_balances}, Portfolio value: ${portfolio_value:.2f}")
                 return usdt_balance, asset_balances, portfolio_value
             else:
                 print(f"Balance check failed: {response.text}")
@@ -89,11 +102,43 @@ class WhaleBot:
             print(f"Symbol precision error for {symbol}: {e}")
             return 6
 
+    def get_price_change(self, symbol):
+        try:
+            url = 'https://api.binance.us/api/v3/ticker/24hr'
+            params = {'symbol': symbol}
+            response = requests.get(url, params=params)
+            if response.status_code == 200:
+                return float(response.json()['priceChangePercent']) / 100
+            return 0
+        except Exception as e:
+            print(f"Price change fetch error for {symbol}: {e}")
+            return 0
+
+    def is_low_market_cap(self, coin_id):
+        try:
+            url = COINGECKO_COIN_URL % coin_id
+            response = requests.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                market_cap = data.get('market_data', {}).get('market_cap', {}).get('usd', 0)
+                if market_cap == 0:
+                    print(f"No market cap data for {coin_id}. Skipping as potential risk.")
+                    return False
+                if market_cap > self.max_market_cap:
+                    print(f"{coin_id} market cap ${market_cap:,} exceeds ${self.max_market_cap:,}. Skipping.")
+                    return False
+                return True
+            print(f"Failed to fetch market cap for {coin_id}: {response.text}")
+            return False
+        except Exception as e:
+            print(f"Market cap check error for {coin_id}: {e}")
+            return False
+
     def get_open_orders(self):
         try:
             url = 'https://api.binance.us/api/v3/openOrders'
             timestamp = str(self.get_server_time())
-            params = {'timestamp': timestamp}
+            params = {'timestamp': timestamp, 'recvWindow': 10000}
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
             signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
             params['signature'] = signature
@@ -116,7 +161,7 @@ class WhaleBot:
             if len(orders) >= 8:
                 url = 'https://api.binance.us/api/v3/openOrders'
                 timestamp = str(self.get_server_time())
-                params = {'symbol': symbol, 'timestamp': timestamp}
+                params = {'symbol': symbol, 'timestamp': timestamp, 'recvWindow': 10000}
                 query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
                 signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
                 params['signature'] = signature
@@ -153,7 +198,8 @@ class WhaleBot:
                 'side': 'SELL',
                 'type': 'MARKET',
                 'quantity': f"{rounded_amount:.{precision}f}",
-                'timestamp': timestamp
+                'timestamp': timestamp,
+                'recvWindow': 10000
             }
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
             signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
@@ -172,6 +218,22 @@ class WhaleBot:
             print(f"Conversion error: {e}")
             return 0
 
+    def sell_underperforming(self, asset_balances):
+        usdt_balance = 0
+        for asset, balance in asset_balances.items():
+            if asset in self.excluded_coins or balance < 0.0001:
+                continue
+            price_change = self.get_price_change(f"{asset}USDT")
+            if price_change >= self.performance_threshold:
+                print(f"{asset} price change {price_change*100:.2f}% >= {self.performance_threshold*100:.2f}%. Holding.")
+                continue
+            if price_change < self.sell_threshold:
+                print(f"{asset} price change {price_change*100:.2f}% < {self.sell_threshold*100:.2f}%. Selling.")
+                usdt_received = self.convert_to_usdt(asset, balance)
+                if usdt_received > 0:
+                    usdt_balance += usdt_received
+        return usdt_balance
+
     def get_whale_buys(self):
         try:
             response = requests.get(COINGECKO_WHALE_URL)
@@ -179,8 +241,8 @@ class WhaleBot:
             data = response.json()
             buys = []
             for ticker in data['tickers']:
-                if ticker['converted_volume']['usd'] > self.whale_threshold and ticker['target'] == 'USDT':
-                    if ticker['base'] in self.safe_coins:
+                if ticker['converted_volume']['usd'] > self.whale_threshold and ticker['target'] == 'USDT' and ticker['base'] not in self.excluded_coins:
+                    if ticker['base'] in self.priority_coins or self.is_low_market_cap(ticker['coin_id']):
                         buys.append(ticker)
                         print(f"Whale buy detected: {ticker['converted_volume']['usd']} USD in {ticker['base']} against {ticker['target']}")
             return buys
@@ -202,7 +264,8 @@ class WhaleBot:
                 'price': f"{stop_price * 0.99:.2f}",
                 'stopPrice': f"{stop_price:.2f}",
                 'timeInForce': 'GTC',
-                'timestamp': timestamp
+                'timestamp': timestamp,
+                'recvWindow': 10000
             }
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
             signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
@@ -223,16 +286,9 @@ class WhaleBot:
         try:
             usdt_balance, asset_balances, portfolio_value = self.get_account_balance()
             if portfolio_value < self.min_notional:
-                print(f"Portfolio value  below minimum notional {self.min_notional}. Stopping trades.")
+                print(f"Portfolio value ${portfolio_value:.2f} below minimum notional {self.min_notional}. Stopping trades.")
                 return False
-            if usdt_balance < amount_usd:
-                for asset, balance in asset_balances.items():
-                    if asset != 'XRP' and balance >= 0.0001:  # Prioritize holding XRP
-                        usdt_received = self.convert_to_usdt(asset, balance)
-                        if usdt_received > 0:
-                            usdt_balance += usdt_received
-                        if usdt_balance >= amount_usd:
-                            break
+            usdt_balance += self.sell_underperforming(asset_balances)
             if usdt_balance < amount_usd:
                 print(f"Insufficient USDT balance: {usdt_balance} < {amount_usd}")
                 return False
@@ -243,7 +299,8 @@ class WhaleBot:
                 'side': 'BUY',
                 'type': 'MARKET',
                 'quoteOrderQty': f"{amount_usd:.2f}",
-                'timestamp': timestamp
+                'timestamp': timestamp,
+                'recvWindow': 10000
             }
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
             signature = hmac.new(BINANCE_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
@@ -267,12 +324,12 @@ class WhaleBot:
             return False
 
     def main(self):
-        print("Auto-Trading Bot Started - Tracking All Whale Buys with Rug Pull Protection...")
+        print("Auto-Trading Bot Started - Tracking Low Market Cap Meme Coin Whale Buys...")
         last_tx = {}
         while True:
             usdt_balance, asset_balances, portfolio_value = self.get_account_balance()
             if portfolio_value < self.min_notional:
-                print(f"Portfolio value  below minimum notional {self.min_notional}. Stopping bot.")
+                print(f"Portfolio value ${portfolio_value:.2f} below minimum notional {self.min_notional}. Stopping bot.")
                 break
             buys = self.get_whale_buys()
             for tx in buys:
@@ -281,10 +338,8 @@ class WhaleBot:
                 unique_id = f"{tx['market']['identifier']}_{tx['timestamp']}"
                 if currency not in last_tx or unique_id not in last_tx[currency]:
                     if self.get_current_price(symbol) > 0:
-                        # Prioritize XRP trades
-                        amount = self.min_notional * 2 if currency == 'xrp' else self.min_notional
                         print(f"Whale buy detected: {tx['converted_volume']['usd']} USD in {currency}")
-                        self.place_binance_buy_order(symbol, amount)
+                        self.place_binance_buy_order(symbol, self.min_notional)
                         last_tx.setdefault(currency, []).append(unique_id)
                         if len(last_tx[currency]) > 10:
                             last_tx[currency].pop(0)
