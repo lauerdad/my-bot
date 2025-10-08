@@ -53,7 +53,7 @@ class WhaleBot:
                 'symbol': symbol,
                 'side': 'SELL',
                 'type': 'MARKET',
-                'quantity': f"{amount:.4f}",  # Round to 4 decimals
+                'quantity': f"{amount:.4f}" if asset == 'ETH' else f"{amount:.2f}",  # ETH: 4 decimals, SOL/AIOZ: 2 decimals
                 'timestamp': timestamp
             }
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
@@ -64,7 +64,7 @@ class WhaleBot:
             if response.status_code == 200:
                 order = response.json()
                 usdt_received = float(order['cummulativeQuoteQty'])
-                print(f"Converted {amount:.4f} {asset} to {usdt_received} USDT")
+                print(f"Converted {amount:.4f if asset == 'ETH' else amount:.2f} {asset} to {usdt_received} USDT")
                 return usdt_received
             else:
                 print(f"{asset} to USDT conversion failed: {response.status_code} - {response.text}")
@@ -96,7 +96,7 @@ class WhaleBot:
             if usdt_balance < amount_usd:
                 for asset, balance in [('ETH', eth_balance), ('SOL', sol_balance), ('AIOZ', aioz_balance)]:
                     if balance > 0:
-                        amount_to_sell = min(balance, 0.1)  # Sell up to 0.1 of asset
+                        amount_to_sell = min(balance, 0.1 if asset == 'ETH' else 1.0)  # ETH: 0.1, SOL/AIOZ: 1.0
                         usdt_received = self.convert_to_usdt(asset, amount_to_sell)
                         if usdt_received > 0:
                             usdt_balance += usdt_received
@@ -111,7 +111,7 @@ class WhaleBot:
                 'symbol': symbol,  # e.g., ETHUSDT
                 'side': 'BUY',
                 'type': 'MARKET',
-                'quoteOrderQty': amount_usd,  # Amount in USD
+                'quoteOrderQty': f"{amount_usd:.2f}",  # 2 decimal precision for USD
                 'timestamp': timestamp
             }
             query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
