@@ -2,6 +2,8 @@ import requests
 import time
 from datetime import datetime
 import json
+import hmac
+import hashlib
 
 # API keys
 BITSGAP_API_KEY = 'g00cR11OSMcawNzE6dqQ6YXcK3nmedotIIzdyWebxxnEhmYjJ0NwHMVdgeeG2LLm'
@@ -34,11 +36,7 @@ class WhaleBot:
     def place_bitsgap_buy_order(self, symbol, amount_usd):
         try:
             url = 'https://api.bitsgap.com/private/v1/order'
-            headers = {
-                'Authorization': f'Bearer {BITSGAP_API_KEY}',
-                'X-API-KEY': BITSGAP_API_KEY,
-                'X-API-SECRET': BITSGAP_SECRET
-            }
+            timestamp = str(int(time.time() * 1000))
             payload = {
                 'exchange': 'binanceus',
                 'symbol': symbol,  # e.g., ETHUSDT
@@ -46,6 +44,13 @@ class WhaleBot:
                 'side': 'buy',
                 'type': 'market',
                 'stop_loss': 0.9  # 10% stop loss
+            }
+            query_string = json.dumps(payload, separators=(',', ':'))
+            signature = hmac.new(BITSGAP_SECRET.encode(), (timestamp + query_string).encode(), hashlib.sha256).hexdigest()
+            headers = {
+                'X-API-KEY': BITSGAP_API_KEY,
+                'X-API-TIMESTAMP': timestamp,
+                'X-API-SIGNATURE': signature
             }
             response = requests.post(url, headers=headers, json=payload)
             if response.status_code == 200:
